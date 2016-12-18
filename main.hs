@@ -3,7 +3,9 @@ import System.Environment (getArgs)
 import System.Random
 
 import Control.Monad
-import Control.Monad.State
+import Control.Monad.Trans.State
+import Control.Monad.Trans.Reader
+import Control.Monad.Trans.Error
 
 import Data.List (permutations, zipWith4)
 import Data.List.Split (chunksOf)
@@ -12,7 +14,14 @@ import qualified Data.Map.Strict as Map
 -- Basic positions
 data Position = Position Int Int -- The location on the board
                 deriving (Show)
--- TODO: Make this an instance of Eq and Ord
+
+instance Eq Position where
+  (==) (Position x1 y1) (Position x2 y2) =
+    (==) (x1, y1) (x2, y2)
+
+instance Ord Position where
+  compare (Position x1 y1) (Position x2 y2) =
+    compare (x1, y1) (x2, y2)
 
 -- Player data
 data Color = Ylw | Red | Blu | Grn deriving (Show)
@@ -43,7 +52,8 @@ main = do
           input <- getLine
           let numPlayers = read input :: Int
           players <- initPlayers numPlayers
-          gameLoop players
+          board <- initBoard players
+          runGame board $ gameLoop board
   else do putStrLn $ "I will load: " ++ args !! 1
 
 initPlayers :: Int -> IO [Player]
@@ -57,13 +67,25 @@ initPlayers numPlayers = do
     controls = [ c | i <- [0..3], let c = if i < numPlayers then Human else AI ]
     positions = [Position 1 1, Position 1 7, Position 7 1, Position 7 7]
 
--- initBoard :: [Player] -> IO Board
--- tiles = duplicate 16 L ++ duplicate 6 T ++ duplicate 12 L
--- shuffle tiles
--- take 24 and give them Treasure
--- take the last, this is XTile
-
--- tile locations: [(r,c)| r<-[1..7], c<-[1..7], (not (even r) && not (even c) && r/=1 && r/=7 && c/=1 && c/=7) || even r || even c]
+initBoard :: [Player] -> IO Board
+initBoard players = do
+    sKinds <- shuffle kinds
+    sDirs <- shuffle dirs
+    sTreasures <- shuffle treasures
+    let xtile = XTile (head sKinds) (head sDirs)
+        tiles = zipWith3 (Tile) (tail sKinds) (tail sDirs) sTreasures
+        rightmap = fixedTiles
+        leftmap = Map.fromList $ zip positions tiles
+    return $ Board players xtile (Map.union leftmap rightmap)
+  where
+    kinds = replicate 16 L ++ replicate 6 T ++ replicate 12 L
+    dirs = replicate 9 N ++ replicate 8 E ++ replicate 8 S ++ replicate 8 W
+    treasures = [ Treasure i | i <- [1..24] ] ++ (replicate 9 $ Treasure 0)
+    positions = [ Position r c | r <- [1..7], c <- [1..7],
+                                 (not (even r) && not (even c)
+                                 && r/=1 && r/=7 && c/=1 && c/=7)
+                                 || even r
+                                 || even c ]
 
 fixedTiles :: Map.Map Position Tile
 fixedTiles =
@@ -76,9 +98,14 @@ fixedTiles =
     dirs =  [E, N, N, S, W, E, W, E, N, S, S, W]
     treasures = replicate 12 $ Treasure 0
 
-gameLoop :: [Player] -> IO ()
-gameLoop players = do
-  putStrLn $ show players
+type MonadLabyrinth a = ReaderT Board (ErrorT String (StateT Board IO)) a
+runGame :: Board -> MonadLabyrinth a -> IO (Either String a, Board)
+runGame board comp =
+  runStateT (runErrorT (runReaderT comp board)) board
+
+gameLoop :: Board -> MonadLabyrinth Board
+gameLoop board = do
+  return board
 
 shuffle :: [a] -> IO [a]
 shuffle [] = return []
