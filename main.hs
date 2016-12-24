@@ -17,7 +17,7 @@ import qualified Data.Map.Strict as Map
 import Data.Char (toLower)
 
 -- Basic positions
-newtype Position = Position (Int,Int)
+newtype Position = P (Int,Int)
                    deriving (Show, Eq, Ord)
 
 -- Player data
@@ -45,7 +45,7 @@ data Tile = Tile {
             }
 data XTile = XTile {
               xkind :: Kind,
-              xdirection :: Direction
+              xtreasure :: Treasure
              }
 data Board = Board {
               xtile :: XTile,
@@ -78,29 +78,29 @@ mkPlayers numHumans =
     cards = [ Card i | i <- [1..24] ]
     colors = [Yellow, Red, Blue, Green]
     controls = [ c | i <- [0..3], let c = if i < numHumans then Human else AI ]
-    positions = [Position (1,1), Position (1,7), Position (7,1), Position (7,7)]
+    positions = [P (1,1), P (1,7), P (7,1), P (7,7)]
 
 mkBoard :: IO Board
 mkBoard = do
     sKinds <- shuffle kinds
     sDirs <- shuffle dirs
     sTreasures <- shuffle treasures
-    let xtile = XTile (head sKinds) (head sDirs)
-        tiles = zipWith3 (Tile) (tail sKinds) (tail sDirs) sTreasures
+    let xtile = XTile (head sKinds) (head sTreasures)
+        tiles = zipWith3 (Tile) (tail sKinds) sDirs (tail sTreasures)
         rightmap = fixedTiles
         leftmap = Map.fromList $ zip positions tiles
     return $ Board xtile (Map.union leftmap rightmap)
   where
-    kinds = replicate 16 L ++ replicate 6 T ++ replicate 12 L
-    dirs = replicate 9 N ++ replicate 9 E ++ replicate 8 S ++ replicate 8 W
-    treasures = [ Treasure i | i <- [1..24] ] ++ (replicate 9 $ Treasure 0)
-    positions = [ Position (r,c) | r <- [1..7], c <- [1..7], even c || even r]
+    kinds = replicate 16 L ++ replicate 6 T ++ replicate 12 I
+    dirs = replicate 9 N ++ replicate 8 E ++ replicate 8 S ++ replicate 8 W
+    treasures = [ Treasure i | i <- [1..24] ] ++ (replicate 10 $ Treasure 0)
+    positions = [ P (r,c) | r <- [1..7], c <- [1..7], even c || even r]
 
 fixedTiles :: Map.Map Position Tile
 fixedTiles =
     Map.fromList $ zip positions (zipWith3 (Tile) kinds dirs treasures)
   where
-    positions = [ Position (r,c) | r <- [1..7], c <- [1..7], not (even c) && not (even r)]
+    positions = [ P (r,c) | r <- [1..7], c <- [1..7], not (even c) && not (even r)]
     kinds = [L, T, T, L,
              T, T, T, T,
              T, T, T, T,
@@ -121,6 +121,7 @@ fixedTiles =
 --  (Map.mapKeys :: (k1 -> k2) -> Map k1 a -> Map k2 a)
 --    -> make sure no other player falls off!
 --    -> first create new xtile, than shift, than insert old xtile
+--    -> also make sure players on the moved tiles are moved!
 --  get a new xtile as result
 --  gather all treasures reachable from position
 --    -> allPaths :: Position -> Player -> Board -> Path -> Visited -> CollectedTreasures
@@ -134,45 +135,153 @@ fixedTiles =
 --        loop
 --  move to a reachable tile
 gameLoop :: [Player] -> Board -> IO ()
-gameLoop (me:others) board = do
-  putStrLn $ "Player " ++ (show $ color me) ++ " can move!"
+gameLoop players board = do
+  putStrLn $ show board
+  move <- selectMove players
+  let (players', board') = doMove move players board
+  putStrLn $ show board'
+  putStrLn "The End"
+
+movePlayers :: [Player] -> Position -> [Player]
+-- If a player is on the row/column that is going to shift
+-- adjust it's position. Else, do nothing
+movePlayers players entry =
+    map go players
+  where
+    go (Player color control position start cards) =
+      (Player color control (shift position entry) start cards)
+
+shift :: Position  -> Position -> Position
+-- Shift a position depending on the entry position
+shift (P (row,col)) (P (1,ecol))
+  | col == ecol = P (row+1,col)
+  | otherwise = P (row,col)
+shift (P (row,col)) (P (7,ecol))
+  | col == ecol = P (row-1,col)
+  | otherwise = P (row,col)
+shift (P (row,col)) (P (erow,1))
+  | row == erow = P (row,col+1)
+  | otherwise = P (row,col)
+shift (P (row,col)) (P (erow,7))
+  | row == erow = P (row,col-1)
+  | otherwise = P (row,col)
+
+moveBoard :: Board -> Direction -> Position -> Board
+-- Get the new XTile from one end
+-- Shift the tiles in the board
+-- Insert the old XTile on the other end
+moveBoard (Board xtile bmap) dir (P (erow,ecol)) =
+    Board newXTile bmap'
+  where
+    exitPos
+      | erow == 1 = P (7,ecol)
+      | erow == 7 = P (1,ecol)
+      | ecol == 1 = P (erow,7)
+      | ecol == 7 = P (erow,1)
+    exitTile = bmap Map.! exitPos
+    newXTile = XTile (kind exitTile) (treasure exitTile)
+    newTile = Tile (xkind xtile) dir (xtreasure xtile)
+    go key = shift key (P (erow,ecol))
+    bmap' = bmap -: Map.delete exitPos
+                 -: Map.mapKeys go
+                 -: Map.insert (P (erow,ecol)) newTile
+
+doMove :: (Direction, Position) -> [Player] -> Board -> ([Player],Board)
+-- First, move the players' positions if they are on the shifted row/col
+-- then, adjust the board bmap and get the new xtile
+doMove (direction, entry) players board =
+  let players' = movePlayers players entry
+      board' = moveBoard board direction entry
+  in (players', board')
+
+askDirection :: IO Direction
+-- Ask the direction to insert the XTile
+askDirection = do
   putStrLn $ "In what direction do you want to insert the XTile? Choose N, E, S or W"
-  xtiledirection <- getLine
-  let xtiledir = read xtiledirection :: Direction
-  putStrLn $ "Do you want to move a row or column? Type 'row' or 'column'"
-  move <- getLine
-  putStrLn $ "Give the index of the " ++ move ++ " you want to move"
-  idxInput <- getLine
-  let idx = read idxInput :: Int
-  if move == "row"
-  then do putStrLn $ "Do you want to move this row from left to right (1) or right to left (2)?"
-          dirInput <- getLine
-          let dir = read dirInput :: Int
-          putStrLn $ xtiledirection ++ move ++ idxInput ++ dirInput
-  else do putStrLn $ "Do you want to move this column from up to down (1) or down to up (2)?"
-          dirInput <- getLine
-          let dir = read dirInput :: Int
-          putStrLn $ xtiledirection ++ move ++ idxInput ++ dirInput
+  input <- getLine
+  let xtiledir = read input :: Direction
+  return xtiledir
+
+askEntry :: IO Position
+-- Ask the position where to insert the XTile
+askEntry = do
+    putStrLn $ "Where do you want to insert the XTile?"
+    putStrLn $ "Give a row and column number in the format (row,column)."
+    input <- getLine
+    let (row,col) = read input :: (Int,Int)
+    if (row,col) `elem` movable
+    then return $ P (row,col)
+    else do putStrLn "You cannot insert a tile here!"
+            askEntry
+  where
+    movable = [(r,c) | r<-[1..7], c<-[1..7], (r==1 || r==7 || c==1 || c==7)
+                                             && (even c || even r)]
+
+moveAllowed :: Position -> [Player] -> Bool
+-- Check if a move does not cause another player
+-- to fall of the board
+moveAllowed (P (1,col)) players =
+    not $ fallsOff `elem` pawnPoss
+  where
+    fallsOff = P (7,col)
+    pawnPoss = map position players
+
+moveAllowed (P (7,col)) players =
+    not $ fallsOff `elem` pawnPoss
+  where
+    fallsOff = P (1,col)
+    pawnPoss = map position players
+
+moveAllowed (P (row,1)) players =
+    not $ fallsOff `elem` pawnPoss
+  where
+    fallsOff = P (row,7)
+    pawnPoss = map position players
+
+moveAllowed (P (row,7)) players =
+    not $ fallsOff `elem` pawnPoss
+  where
+    fallsOff = P (row,1)
+    pawnPoss = map position players
+
+selectMove :: [Player] -> IO (Direction, Position)
+-- Select a move.
+-- For a human player: ask where to insert the XTile
+-- For an AI player: find the best place to insert the XTile
+selectMove ((Player color Human p s c):others) = do
+  putStrLn $ "Player " ++ (show $ color) ++ " can move!"
+  direction <- askDirection
+  entry <- askEntry
+  if moveAllowed entry ((Player color Human p s c):others)
+  then return (direction, entry)
+  else do putStrLn $ "This move causes a player to fall off the board! Retry..."
+          selectMove ((Player color Human p s c):others)
+
+selectMove ((Player color AI _ _ _):others) = return (N,P (1,2))
 
 shuffle :: [a] -> IO [a]
+-- shuffle a list
 shuffle [] = return []
 shuffle xs = do
   randomPos <- getStdRandom (randomR (0, length xs - 1))
   let (left, (a:right)) = splitAt randomPos xs
   fmap (a:) (shuffle (left ++ right))
 
+(-:) :: a -> (a -> b) -> b
+x -: f = f x
+
 instance Show Board where
   show (Board xtile bmap) =
       show xtile ++ "\n" ++ (foldl func "Board:\n" (sort keys))
     where
       keys = Map.keys bmap
-      func acc (Position (row, col))
-        | col == 7 = acc ++ (show $ bmap Map.! (Position (row,col))) ++ "\n"
-        | otherwise = acc ++ (show $ bmap Map.! (Position (row,col))) ++ " "
+      func acc (P (row, col))
+        | col == 7 = acc ++ (show $ bmap Map.! P (row,col)) ++ "\n"
+        | otherwise = acc ++ (show $ bmap Map.! P (row,col)) ++ " "
 
 instance Show XTile where
-  show (XTile xkind xdirection) =
-    "XTile: " ++ show xkind ++ (map toLower $ show xdirection)
+  show (XTile xkind _) =
+    "XTile: " ++ show xkind
 
 instance Show Tile where
   show (Tile kind direction treasure) =
