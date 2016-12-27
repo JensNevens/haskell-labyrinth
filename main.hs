@@ -11,20 +11,20 @@ import Control.Monad.Trans.State
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Except
 
-import Data.List (permutations, zipWith5, sort)
+import Data.List (permutations, zipWith5, sort, nub, (\\))
 import Data.List.Split (chunksOf)
 import qualified Data.Map.Strict as Map
 import Data.Char (toLower)
 
 -- Basic positions
 newtype Position = P (Int,Int)
-                   deriving (Show, Eq, Ord)
+                   deriving (Eq, Ord)
 
 -- Player data
 data Color = Yellow | Red | Blue | Green deriving (Show)
 data Control = Human | AI deriving (Show)
 newtype Card = Card Int -- The ID of the treasure to collect
-               deriving (Show)
+               deriving (Show, Eq)
 data Player = Player {
                 color :: Color,
                 control :: Control,
@@ -34,10 +34,10 @@ data Player = Player {
               } deriving (Show)
 
 -- Board data
-data Direction = N | E | S | W deriving (Show, Read)
+data Direction = N | E | S | W deriving (Show, Read, Eq)
 data Kind = L | T | I deriving (Show)
 newtype Treasure = Treasure Int -- The ID of the treasure
-                   deriving (Show)
+                   deriving (Show, Eq)
 data Tile = Tile {
               kind :: Kind,
               direction :: Direction,
@@ -118,29 +118,117 @@ fixedTiles =
 
 -- One move consists of:
 --  use xtile to shift a row/column
---  (Map.mapKeys :: (k1 -> k2) -> Map k1 a -> Map k2 a)
---    -> make sure no other player falls off!
---    -> first create new xtile, than shift, than insert old xtile
---    -> also make sure players on the moved tiles are moved!
 --  get a new xtile as result
 --  gather all treasures reachable from position
---    -> allPaths :: Position -> Player -> Board -> Path -> Visited -> CollectedTreasures
---       allPaths cur player board path visited treasures =
---        suc <- allNeighbours cur
---        guard (not visisted suc, can visit suc)
---        if (treasure at suc == treasure from player)
---          append to treasures
---        append cur to visited
---        append suc to path
---        loop
 --  move to a reachable tile
 gameLoop :: [Player] -> Board -> IO ()
 gameLoop players board = do
   putStrLn $ show board
   move <- selectMove players
   let (players', board') = doMove move players board
+      (cards, visited) = gatherCards (head players') board'
+      firstPlayer = removeCards (head players') cards
   putStrLn $ show board'
-  putStrLn "The End"
+  putStrLn $ show visited
+  putStrLn $ show cards
+  firstPlayer' <- movePlayer firstPlayer visited
+  if isWinner firstPlayer'
+  then putStrLn "The End"
+  else gameLoop ((tail players')++[firstPlayer']) board'
+
+isWinner :: Player -> Bool
+isWinner (Player col con position start []) =
+  position == start
+isWinner (Player col con position start cards) = 
+  False
+
+askPosition :: [Position] -> IO Position
+-- Ask the player where to move to
+askPosition visited = do
+  input <- getLine
+  let pair = read input :: (Int,Int)
+  if (P pair) `elem` visited
+  then return (P pair)
+  else do putStrLn $ "This is not a choice. Retry..."
+          askPosition visited
+
+movePlayer :: Player -> [Position] -> IO Player
+-- Move the player to a new tile
+movePlayer (Player color control position start cards) visited = do
+  putStrLn $ "Where do you want to move? You can reach the following tiles:"
+  putStrLn $ show visited
+  newPos <- askPosition visited
+  return (Player color control newPos start cards)
+
+removeCards :: Player -> [Card] -> Player
+-- Remove the cards this player has collected
+removeCards (Player col con pos start cards) collectedCards =
+  (Player col con pos start (cards \\ collectedCards))
+
+gatherCards :: Player -> Board -> ([Card],[Position])
+gatherCards player board =
+    allPaths player (bmap board) [[(position player)]] [] []
+
+allPaths :: Player -> Map.Map Position Tile -> [[Position]] -> [Position] -> [Card] -> ([Card],[Position])
+-- Search through all reachable tiles and gather the treasure cards
+allPaths player bmap frontier visited cards
+    | null sucFrontier = (cards, visited++curFrontier)
+    | otherwise = allPaths player bmap sucFrontier (visited++curFrontier) collected
+  where
+    curFrontier = map head frontier
+    sucFrontier = [ (suc:cur) | cur <- frontier,
+                                suc <- neighbours (head cur) bmap,
+                                not $ suc `elem` visited ]
+    collected = foldl (collectCards bmap player) cards sucFrontier
+
+collectCards :: Map.Map Position Tile -> Player -> [Card] -> [Position] -> [Card]
+-- Check the treasure on the current tile and check
+-- if you have the card associated with it
+collectCards bmap player cardAcc (suc:rest) =
+    cardAcc ++ card
+  where
+    tile = bmap Map.! suc
+    card = filter (bingo $ treasure tile) (cards player)
+    bingo :: Treasure -> Card -> Bool
+    bingo (Treasure x) (Card y) = x == y
+
+canVisit :: Map.Map Position Tile -> Position -> Position -> Bool
+-- Check if you can go from tile 1 to tile 2
+canVisit bmap (P (r1,c1)) (P (r2,c2)) =
+    case (rd, cd) of
+      (-1,0) -> N `elem` fromLinks && S `elem` toLinks -- to is above from
+      (0,1)  -> E `elem` fromLinks && W `elem` toLinks -- to is right of from
+      (1,0)  -> S `elem` fromLinks && N `elem` toLinks -- to is below from
+      (0,-1) -> W `elem` fromLinks && E `elem` toLinks -- to is left of from
+  where
+    (rd, cd) = (r2-r1, c2-c1)
+    fromLinks = links $ bmap Map.! (P (r1,c1))
+    toLinks = links $ bmap Map.! (P (r2,c2))
+
+links :: Tile -> [Direction]
+-- In which direction can you enter/exit a tile
+links (Tile L N _) = [N,E]
+links (Tile L E _) = [E,S]
+links (Tile L S _) = [S,W]
+links (Tile L W _) = [W,N]
+links (Tile T N _) = [E,S,W]
+links (Tile T E _) = [N,S,W]
+links (Tile T S _) = [N,E,W]
+links (Tile T W _) = [N,E,S]
+links (Tile I N _) = [N,S]
+links (Tile I E _) = [E,W]
+links (Tile I S _) = [N,S]
+links (Tile I W _) = [E,W]
+
+neighbours :: Position -> Map.Map Position Tile -> [Position]
+-- Determine the neighbours of a position that you are able
+-- to visit. This depends on the kind and direction of both tiles
+neighbours pos bmap =
+    filter (canVisit bmap pos) $ filter inBounds $ allNeighbours pos
+  where
+    inBounds (P (row,col)) = row >= 1 && row <= 7 && col >= 1 && col <= 7
+    allNeighbours (P (row,col)) = [P (row-1,col), P (row+1,col),
+                                   P (row,col-1), P (row,col+1)]
 
 movePlayers :: [Player] -> Position -> [Player]
 -- If a player is on the row/column that is going to shift
@@ -148,6 +236,7 @@ movePlayers :: [Player] -> Position -> [Player]
 movePlayers players entry =
     map go players
   where
+    go :: Player -> Player
     go (Player color control position start cards) =
       (Player color control (shift position entry) start cards)
 
@@ -170,21 +259,18 @@ moveBoard :: Board -> Direction -> Position -> Board
 -- Get the new XTile from one end
 -- Shift the tiles in the board
 -- Insert the old XTile on the other end
-moveBoard (Board xtile bmap) dir (P (erow,ecol)) =
+moveBoard (Board xtile bmap) dir entry =
     Board newXTile bmap'
   where
-    exitPos
-      | erow == 1 = P (7,ecol)
-      | erow == 7 = P (1,ecol)
-      | ecol == 1 = P (erow,7)
-      | ecol == 7 = P (erow,1)
+    exitPos = exit entry
     exitTile = bmap Map.! exitPos
     newXTile = XTile (kind exitTile) (treasure exitTile)
     newTile = Tile (xkind xtile) dir (xtreasure xtile)
-    go key = shift key (P (erow,ecol))
+    go :: Position -> Position
+    go key = shift key entry
     bmap' = bmap -: Map.delete exitPos
                  -: Map.mapKeys go
-                 -: Map.insert (P (erow,ecol)) newTile
+                 -: Map.insert entry newTile
 
 doMove :: (Direction, Position) -> [Player] -> Board -> ([Player],Board)
 -- First, move the players' positions if they are on the shifted row/col
@@ -220,28 +306,10 @@ askEntry = do
 moveAllowed :: Position -> [Player] -> Bool
 -- Check if a move does not cause another player
 -- to fall of the board
-moveAllowed (P (1,col)) players =
+moveAllowed entry players =
     not $ fallsOff `elem` pawnPoss
   where
-    fallsOff = P (7,col)
-    pawnPoss = map position players
-
-moveAllowed (P (7,col)) players =
-    not $ fallsOff `elem` pawnPoss
-  where
-    fallsOff = P (1,col)
-    pawnPoss = map position players
-
-moveAllowed (P (row,1)) players =
-    not $ fallsOff `elem` pawnPoss
-  where
-    fallsOff = P (row,7)
-    pawnPoss = map position players
-
-moveAllowed (P (row,7)) players =
-    not $ fallsOff `elem` pawnPoss
-  where
-    fallsOff = P (row,1)
+    fallsOff = exit entry
     pawnPoss = map position players
 
 selectMove :: [Player] -> IO (Direction, Position)
@@ -249,7 +317,8 @@ selectMove :: [Player] -> IO (Direction, Position)
 -- For a human player: ask where to insert the XTile
 -- For an AI player: find the best place to insert the XTile
 selectMove ((Player color Human p s c):others) = do
-  putStrLn $ "Player " ++ (show $ color) ++ " can move!"
+  putStrLn $ "Player " ++ (show color) ++ " can move!"
+  putStrLn $ "You are at " ++ (show p)
   direction <- askDirection
   entry <- askEntry
   if moveAllowed entry ((Player color Human p s c):others)
@@ -270,11 +339,19 @@ shuffle xs = do
 (-:) :: a -> (a -> b) -> b
 x -: f = f x
 
+exit :: Position -> Position
+-- Give the exit, given the entry
+exit (P (1,col)) = P (7,col)
+exit (P (7,col)) = P (1,col)
+exit (P (row,1)) = P (row,7)
+exit (P (row,7)) = P (row,1)
+
 instance Show Board where
   show (Board xtile bmap) =
       show xtile ++ "\n" ++ (foldl func "Board:\n" (sort keys))
     where
       keys = Map.keys bmap
+      func :: String -> Position -> String
       func acc (P (row, col))
         | col == 7 = acc ++ (show $ bmap Map.! P (row,col)) ++ "\n"
         | otherwise = acc ++ (show $ bmap Map.! P (row,col)) ++ " "
@@ -284,5 +361,9 @@ instance Show XTile where
     "XTile: " ++ show xkind
 
 instance Show Tile where
-  show (Tile kind direction treasure) =
+  show (Tile kind direction _) =
     show kind ++ (map toLower $ show direction)
+
+instance Show Position where
+  show (P (row,col)) =
+    show (row,col)
