@@ -2,6 +2,7 @@
 import System.Environment (getArgs)
 import System.Random
 import System.IO
+import System.Process (callCommand)
 
 import Control.Monad
 import Control.Monad.State
@@ -134,12 +135,17 @@ gameLoop players board = do
   firstPlayer' <- movePlayer firstPlayer visited
   if isWinner firstPlayer'
   then putStrLn "The End"
-  else gameLoop ((tail players')++[firstPlayer']) board'
+  else callCommand "clear" >> gameLoop ((tail players')++[firstPlayer']) board'
+
+-- showInfo :: [Player] -> IO ()
+-- showInfo (me:others) = do
+--   putStrLn $ "Player " ++ (show color) ++ " can move!"
+--   putStrLn $ "You are at " ++ (show p)
 
 isWinner :: Player -> Bool
 isWinner (Player col con position start []) =
   position == start
-isWinner (Player col con position start cards) = 
+isWinner (Player col con position start cards) =
   False
 
 askPosition :: [Position] -> IO Position
@@ -149,13 +155,12 @@ askPosition visited = do
   let pair = read input :: (Int,Int)
   if (P pair) `elem` visited
   then return (P pair)
-  else do putStrLn $ "This is not a choice. Retry..."
-          askPosition visited
+  else putStrLn "This is not a choice. Retry..." >> askPosition visited
 
 movePlayer :: Player -> [Position] -> IO Player
 -- Move the player to a new tile
 movePlayer (Player color control position start cards) visited = do
-  putStrLn $ "Where do you want to move? You can reach the following tiles:"
+  putStrLn "Where do you want to move? You can reach the following tiles:"
   putStrLn $ show visited
   newPos <- askPosition visited
   return (Player color control newPos start cards)
@@ -283,7 +288,7 @@ doMove (direction, entry) players board =
 askDirection :: IO Direction
 -- Ask the direction to insert the XTile
 askDirection = do
-  putStrLn $ "In what direction do you want to insert the XTile? Choose N, E, S or W"
+  putStrLn "In what direction do you want to insert the XTile? Choose N, E, S or W"
   input <- getLine
   let xtiledir = read input :: Direction
   return xtiledir
@@ -291,14 +296,13 @@ askDirection = do
 askEntry :: IO Position
 -- Ask the position where to insert the XTile
 askEntry = do
-    putStrLn $ "Where do you want to insert the XTile?"
-    putStrLn $ "Give a row and column number in the format (row,column)."
+    putStrLn "Where do you want to insert the XTile?"
+    putStrLn "Give a row and column number in the format (row,column)."
     input <- getLine
     let (row,col) = read input :: (Int,Int)
     if (row,col) `elem` movable
     then return $ P (row,col)
-    else do putStrLn "You cannot insert a tile here!"
-            askEntry
+    else putStrLn "You cannot insert a tile here!" >> askEntry
   where
     movable = [(r,c) | r<-[1..7], c<-[1..7], (r==1 || r==7 || c==1 || c==7)
                                              && (even c || even r)]
@@ -317,14 +321,12 @@ selectMove :: [Player] -> IO (Direction, Position)
 -- For a human player: ask where to insert the XTile
 -- For an AI player: find the best place to insert the XTile
 selectMove ((Player color Human p s c):others) = do
-  putStrLn $ "Player " ++ (show color) ++ " can move!"
-  putStrLn $ "You are at " ++ (show p)
   direction <- askDirection
   entry <- askEntry
   if moveAllowed entry ((Player color Human p s c):others)
   then return (direction, entry)
-  else do putStrLn $ "This move causes a player to fall off the board! Retry..."
-          selectMove ((Player color Human p s c):others)
+  else putStrLn "This move causes a player to fall off the board! Retry..."
+       >> selectMove ((Player color Human p s c):others)
 
 selectMove ((Player color AI _ _ _):others) = return (N,P (1,2))
 
@@ -348,21 +350,40 @@ exit (P (row,7)) = P (row,1)
 
 instance Show Board where
   show (Board xtile bmap) =
-      show xtile ++ "\n" ++ (foldl func "Board:\n" (sort keys))
+      show xtile
+      ++ "\nBoard:\n"
+      ++ replicate 34 '-' ++ "\n"
+      ++ (foldl func "" (sort keys))
     where
       keys = Map.keys bmap
       func :: String -> Position -> String
       func acc (P (row, col))
-        | col == 7 = acc ++ (show $ bmap Map.! P (row,col)) ++ "\n"
-        | otherwise = acc ++ (show $ bmap Map.! P (row,col)) ++ " "
+        | col == 7 = acc
+                     ++ (show $ bmap Map.! P (row,col))
+                     ++ "\n" ++ replicate 34 '-' ++ "\n"
+        | otherwise = acc
+                      ++ (show $ bmap Map.! P (row,col))
+                      ++ "|"
 
 instance Show XTile where
   show (XTile xkind _) =
     "XTile: " ++ show xkind
 
 instance Show Tile where
-  show (Tile kind direction _) =
-    show kind ++ (map toLower $ show direction)
+  -- show (Tile kind direction _) =
+  --   show kind ++ (map toLower $ show direction)
+  show (Tile L N _) = " ^ >"
+  show (Tile L E _) = "  v>"
+  show (Tile L S _) = "< v "
+  show (Tile L W _) = "<^  "
+  show (Tile T N _) = "< v>"
+  show (Tile T E _) = "<^v "
+  show (Tile T S _) = "<^ >"
+  show (Tile T W _) = " v^>"
+  show (Tile I N _) = " ^v "
+  show (Tile I E _) = "<  >"
+  show (Tile I S _) = " ^v "
+  show (Tile I W _) = "<  >"
 
 instance Show Position where
   show (P (row,col)) =
