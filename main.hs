@@ -172,11 +172,11 @@ play players board = do
       (cards, visited) = gatherCards (head players') board'
       firstPlayer = removeCards (head players') cards
   firstPlayer' <- movePlayer firstPlayer visited
-  let nextPlayers = tail players' ++ [firstPlayer']
-  postPrint nextPlayers visited cards
+  postPrint (firstPlayer':(tail players')) visited cards
   if isWinner firstPlayer'
   then putStrLn $ "Player " ++ (show $ color firstPlayer') ++ " has won!"
-  else callCommand "clear" >> loop nextPlayers board'
+  else let nextPlayers = tail players' ++ [firstPlayer']
+       in callCommand "clear" >> loop nextPlayers board'
 
 -- Turn of the prePrint and postPrint for AI players
 -- by using pattern matching on the first player's control
@@ -220,8 +220,8 @@ askPosition :: [Position] -> IO Position
 askPosition visited = do
   input <- getLine
   let pair = read input :: (Int,Int)
-  if (Ps pair) `elem` visited
-  then return (Ps pair)
+  if Ps pair `elem` visited
+  then return $ Ps pair
   else putStrLn "This is not a valid choice. Retry..." >> askPosition visited
 
 movePlayer :: Player -> [Position] -> IO Player
