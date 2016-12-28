@@ -1,0 +1,12 @@
+Red AI (2,5) (1,7) [C18,C22,C09,C06,C02]
+Blue AI (7,3) (7,1) [C04,C15,C12,C01,C03,C16]
+Green AI (7,7) (7,7) [C23,C20,C10,C07,C14,C19]
+Yellow Human (2,3) (1,1) [C24,C05,C08,C11,C17,C13]
+L-T19
+LE-   ,IE-   ,TN-   ,LE-T03,TN-   ,LE-T21,LS-   
+TN-T15,LN-T14,LN-   ,IN-T07,IE-T10,TN-   ,TS-T01
+TW-   ,LN-T18,TW-   ,TS-T23,TN-   ,IN-T24,TE-   
+IW-   ,IN-T06,TE-T20,IS-T08,IS-T02,IW-   ,IN-T13
+TW-   ,LE-T16,TS-   ,LE-T17,TE-   ,TS-T04,TE-   
+LN-T22,LW-T05,LN-T12,IN-   ,LE-   ,LS-   ,LW-T09
+LN-   ,LW-   ,TS-   ,IS-T11,TS-   ,LW-   ,LW-   
