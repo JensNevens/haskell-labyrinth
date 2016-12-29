@@ -1,41 +1,14 @@
 
+module Parser (gameP) where
+
 import Text.Parsec
 import Text.Parsec.Char
+
 import qualified Data.Map.Strict as Map
-import System.Environment (getArgs)
+
 import Control.Monad
 
--- Basic positions
-newtype Position = Ps (Int,Int)
-                   deriving (Eq, Ord, Show)
-
--- Player data
-data Color = Yellow | Red | Blue | Green deriving (Show)
-data Control = Human | AI deriving (Show)
-newtype Card = Cd Int -- The ID of the treasure to collect
-               deriving (Eq, Show)
-data Player = Player {
-                color :: Color,
-                control :: Control,
-                position :: Position,
-                start :: Position,
-                cards :: [Card] } deriving (Show)
-
--- Board data
-data Direction = N | E | S | W deriving (Show, Read, Eq, Enum)
-data Kind = L | T | I deriving (Show)
-newtype Treasure = Tr Int -- The ID of the treasure
-                   deriving (Eq,Show)
-data Tile = Tile {
-              kind :: Kind,
-              direction :: Direction,
-              treasure :: Treasure } deriving (Show)
-data XTile = XTile {
-              xkind :: Kind,
-              xtreasure :: Treasure } deriving (Show)
-data Board = Board {
-              xtile :: XTile,
-              bmap :: Map.Map Position Tile } deriving (Show)
+import Data
 
 gameP :: Parsec String () ([Player], Board)
 gameP = do
@@ -43,7 +16,6 @@ gameP = do
   board <- boardP
   return (players,board)
 
--- TODO: Make sure board is executed on 1 line with [...,...,...]
 boardP :: Parsec String () Board
 boardP = do
     xtile <- xtileP
@@ -58,7 +30,7 @@ playerP =
 
 colorP :: Parsec String () Color
 colorP =
-    liftM mkColor $ spaces >> (string "Yellow" <|> string "Red" <|> string "Blue" <|> string "Green")
+    liftM mkColor $ symbol "Yellow" <|> symbol "Red" <|> symbol "Blue" <|> symbol "Green"
   where
     mkColor :: String -> Color
     mkColor "Yellow" = Yellow
@@ -67,7 +39,7 @@ colorP =
     mkColor "Green" = Green
 
 controlP :: Parsec String () Control
-controlP = liftM mkControl $ spaces >> (string "Human" <|> string "AI")
+controlP = liftM mkControl $ symbol "Human" <|> symbol "AI"
   where
     mkControl :: String -> Control
     mkControl "Human" = Human
@@ -97,14 +69,14 @@ kindP = liftM mkKind $ symbol "L" <|> symbol "T" <|> symbol "I"
 
 treasureP :: Parsec String () Treasure
 treasureP = do
-  idx <- (string "T" >> integer) <|> (spaces >> return 0)
+  idx <- (symbol "T" >> integer) <|> (spaces >> return 0)
   return $ Tr idx
 
 tileP :: Parsec String () Tile
-tileP = liftM3 Tile kindP directionP (keyword "-" >> treasureP)
+tileP = liftM3 Tile kindP directionP treasureP
 
 xtileP :: Parsec String () XTile
-xtileP = liftM2 XTile kindP (keyword "-" >> treasureP)
+xtileP = liftM2 XTile kindP treasureP
 
 -- Utils --
 pair :: Parsec String () a -> Parsec String () b -> Parsec String () (a,b)
@@ -125,10 +97,10 @@ integer = do
   return $ read (sign ++ digits)
 
 keyword :: String -> Parsec String () ()
-keyword s = spaces >> string s >> return ()
+keyword s = try (spaces >> string s >> return ())
 
 symbol :: String -> Parsec String () String
-symbol s = spaces >> string s
+symbol s = try (spaces >> string s)
 
 listOf :: Parsec String () a -> String -> String -> String -> Parsec String () [a]
 listOf p open sep close =

@@ -1,6 +1,7 @@
 
+module Main (main) where
+
 import System.Environment (getArgs)
-import System.Random
 import System.IO
 import System.Process (callCommand)
 import System.FilePath.Posix ((-<.>))
@@ -9,37 +10,11 @@ import Data.List (zipWith5, sort, (\\))
 import Data.List.Split (chunksOf)
 import qualified Data.Map.Strict as Map
 
--- Basic positions
-newtype Position = Ps (Int,Int)
-                   deriving (Eq, Ord)
+import Text.Parsec
 
--- Player data
-data Color = Yellow | Red | Blue | Green deriving (Show)
-data Control = Human | AI deriving (Show)
-newtype Card = Cd Int -- The ID of the treasure to collect
-               deriving (Eq)
-data Player = Player {
-                color :: Color,
-                control :: Control,
-                position :: Position,
-                start :: Position,
-                cards :: [Card] }
-
--- Board data
-data Direction = N | E | S | W deriving (Show, Read, Eq, Enum)
-data Kind = L | T | I deriving (Show)
-newtype Treasure = Tr Int -- The ID of the treasure
-                   deriving (Eq)
-data Tile = Tile {
-              kind :: Kind,
-              direction :: Direction,
-              treasure :: Treasure }
-data XTile = XTile {
-              xkind :: Kind,
-              xtreasure :: Treasure }
-data Board = Board {
-              xtile :: XTile,
-              bmap :: Map.Map Position Tile }
+import Utils
+import Data
+import Parser
 
 main :: IO ()
 main = do
@@ -48,7 +23,7 @@ main = do
   case args of
     ["-new"] -> newGame
     ["-load", filename] -> load filename
-    otherwise -> do putStrLn "Usage: '-new' for a new game, '-load filename' to load a game"
+    otherwise -> print "Usage: '-new' for a new game, '-load filename' to load a game"
 
 newGame :: IO ()
 newGame = do
@@ -64,9 +39,9 @@ mkPlayers numHumans =
     shuffle cards >>= (\shuffled ->
       return $ zipWith5 (Player) colors controls starts starts (chunksOf 6 shuffled))
   where
-    cards = [ Cd i | i <- [1..24] ]
+    cards = [Cd i | i <- [1..24]]
     colors = [Yellow, Red, Blue, Green]
-    controls = [ c | i <- [0..3], let c = if i < numHumans then Human else AI ]
+    controls = [c | i <- [0..3], let c = if i < numHumans then Human else AI]
     starts = [Ps (1,1), Ps (1,7), Ps (7,1), Ps (7,7)]
 
 mkBoard :: IO Board
@@ -82,14 +57,14 @@ mkBoard = do
   where
     kinds = replicate 16 L ++ replicate 6 T ++ replicate 12 I
     dirs = replicate 9 N ++ replicate 8 E ++ replicate 8 S ++ replicate 8 W
-    treasures = [ Tr i | i <- [1..24] ] ++ (replicate 10 $ Tr 0)
-    positions = [ Ps (r,c) | r <- [1..7], c <- [1..7], even c || even r]
+    treasures = [Tr i | i <- [1..24]] ++ (replicate 10 $ Tr 0)
+    positions = [Ps (r,c) | r <- [1..7], c <- [1..7], even c || even r]
 
 fixedTiles :: Map.Map Position Tile
 fixedTiles =
     Map.fromList $ zip positions (zipWith3 (Tile) kinds dirs treasures)
   where
-    positions = [ Ps (r,c) | r <- [1..7], c <- [1..7], not (even c) && not (even r)]
+    positions = [Ps (r,c) | r <- [1..7], c <- [1..7], not (even c) && not (even r)]
     kinds = [L, T, T, L,
              T, T, T, T,
              T, T, T, T,
@@ -105,9 +80,9 @@ load filename = do
   let posixFilename = filename -<.> ".txt"
   putStrLn $ "I will load: " ++ posixFilename
   input <- readFile posixFilename
-  -- (players, board) <- parse input
-  -- loop players board
-  putStrLn input
+  case (parse gameP "" input) of
+    Left _ -> putStrLn "The given file cannot be read"
+    Right (players,board) -> loop players board
 
 askFilePath :: IO FilePath
 askFilePath = do
@@ -118,38 +93,38 @@ askFilePath = do
 save :: [Player] -> Board -> IO ()
 save players (Board xtile bmap) = do
     filepath <- askFilePath
-    let playerData = foldl (\acc p -> (acc ++ show p ++ "\n")) "" players
-        boardData = printXTile xtile ++ "\n" ++ (foldl printBoard "" (sort keys))
+    let playerData = foldr (\p acc -> (show p ++ "\n" ++ acc)) "" players
+        boardData = printXTile xtile ++ "\n[" ++ (concat $ map printPos (sort keys)) ++ "]"
     writeFile filepath $ playerData ++ boardData
     putStrLn $ "Game saved in " ++ filepath
   where
     keys = Map.keys bmap
-    printBoard :: String -> Position -> String
-    printBoard acc (Ps (row, col))
-      | col == 7 = acc ++ (printTile $ bmap Map.! Ps (row,col)) ++ "\n"
-      | otherwise = acc ++ (printTile $ bmap Map.! Ps (row,col)) ++ ","
+    printPos :: Position -> String
+    printPos (Ps (r,c))
+      | c == 7 && r == 7 = printTile $ bmap Map.! Ps (r,c)
+      | otherwise = (printTile $ bmap Map.! Ps (r,c)) ++ ","
     printTile :: Tile -> String
-    printTile (Tile L N t) = "LN-" ++ show t
-    printTile (Tile L E t) = "LE-" ++ show t
-    printTile (Tile L S t) = "LS-" ++ show t
-    printTile (Tile L W t) = "LW-" ++ show t
-    printTile (Tile T N t) = "TN-" ++ show t
-    printTile (Tile T E t) = "TE-" ++ show t
-    printTile (Tile T S t) = "TS-" ++ show t
-    printTile (Tile T W t) = "TW-" ++ show t
-    printTile (Tile I N t) = "IN-" ++ show t
-    printTile (Tile I E t) = "IE-" ++ show t
-    printTile (Tile I S t) = "IS-" ++ show t
-    printTile (Tile I W t) = "IW-" ++ show t
+    printTile (Tile L N t) = "LN" ++ show t
+    printTile (Tile L E t) = "LE" ++ show t
+    printTile (Tile L S t) = "LS" ++ show t
+    printTile (Tile L W t) = "LW" ++ show t
+    printTile (Tile T N t) = "TN" ++ show t
+    printTile (Tile T E t) = "TE" ++ show t
+    printTile (Tile T S t) = "TS" ++ show t
+    printTile (Tile T W t) = "TW" ++ show t
+    printTile (Tile I N t) = "IN" ++ show t
+    printTile (Tile I E t) = "IE" ++ show t
+    printTile (Tile I S t) = "IS" ++ show t
+    printTile (Tile I W t) = "IW" ++ show t
     printXTile :: XTile -> String
-    printXTile (XTile L t) = "L-" ++ show t
-    printXTile (XTile T t) = "T-" ++ show t
-    printXTile (XTile I t) = "I-" ++ show t
+    printXTile (XTile L t) = "L" ++ show t
+    printXTile (XTile T t) = "T" ++ show t
+    printXTile (XTile I t) = "I" ++ show t
 
 -- Each player has access to:
 --  the board (tiles, xtile, treasures, other pawns locations)
 --  the players own treasure cards
---  the number of cards left for other players (why use this?)
+--  the number of cards left for other players
 
 -- One move consists of:
 --  use xtile to shift a row/column
@@ -167,14 +142,14 @@ loop players board = do
 play :: [Player] -> Board -> IO ()
 play players board = do
   prePrint players board
-  move <- selectMove players $ xtile board
+  move <- selectMove players board
   let (players', board') = doMove move players board
       (cards, visited) = gatherCards (head players') board'
       firstPlayer = removeCards (head players') cards
   firstPlayer' <- movePlayer firstPlayer visited
   postPrint (firstPlayer':(tail players')) visited cards
   if isWinner firstPlayer'
-  then putStrLn $ "Player " ++ (show $ color firstPlayer') ++ " has won!"
+  then announceWinner firstPlayer'
   else let nextPlayers = tail players' ++ [firstPlayer']
        in callCommand "clear" >> loop nextPlayers board'
 
@@ -185,34 +160,38 @@ prePrint (me:others) board = do
     putStrLn $ "Player " ++ (show $ color me) ++ " can move!"
     putStrLn $ (show $ color me) ++ " is at " ++ (show $ position me)
     putStrLn $ (show $ color me) ++ " has these cards: " ++ (show $ cards me)
-    putStrLn $ foldl pprint "" others
+    putStrLn $ concat $ map pprint others
     putStrLn $ show board
   where
-    pprint :: String -> Player -> String
-    pprint acc (Player color control position _ cards) =
-      acc ++ "Player " ++ show color ++ " (" ++ show control ++ ") is at "
-      ++ show position ++ " and has yet to collect " ++ (show $ length cards) ++ " cards\n"
+    pprint :: Player -> String
+    pprint (Player color control position _ cards) =
+      "Player " ++ show color ++ " (" ++ show control ++ ") is at "
+      ++ show position ++ " and has yet to collect "
+      ++ (show $ length cards) ++ " cards\n"
 
 postPrint :: [Player] -> [Position] -> [Card] -> IO ()
 postPrint (me:others) visited collectedCards = do
     putStrLn "Your move is over"
     putStrLn $ "You are now at " ++ (show $ position me)
-    putStrLn $ foldl pprint "" others
+    putStrLn $ concat $ map pprint others
     putStrLn $ "You visited these positions: " ++ show visited
     putStrLn $ "You collected these cards: " ++ show collectedCards
     putStrLn "Press any key to continue"
     input <- getLine
     return ()
   where
-    pprint :: String -> Player -> String
-    pprint acc (Player color control position _ _) =
-      acc ++ "Player " ++ show color ++ " (" ++ show control ++ ") is now at "
-      ++ show position ++ "\n"
+    pprint :: Player -> String
+    pprint (Player color control position _ _) =
+      "Player " ++ show color ++ " (" ++ show control ++ ") is now at " ++ show position ++ "\n"
+
+announceWinner :: Player -> IO ()
+announceWinner (Player color _ _ _ _) =
+  putStrLn $ "Player " ++ (show color) ++ " has won!"
 
 isWinner :: Player -> Bool
-isWinner (Player col con position start []) =
+isWinner (Player _ _ position start []) =
   position == start
-isWinner (Player col con position start cards) =
+isWinner (Player _ _ _ _ cards) =
   False
 
 askPosition :: [Position] -> IO Position
@@ -222,7 +201,8 @@ askPosition visited = do
   let pair = read input :: (Int,Int)
   if Ps pair `elem` visited
   then return $ Ps pair
-  else putStrLn "This is not a valid choice. Retry..." >> askPosition visited
+  else putStrLn "This is not a valid choice. Retry..."
+       >> askPosition visited
 
 movePlayer :: Player -> [Position] -> IO Player
 -- Move the player to a new tile
@@ -242,24 +222,23 @@ removeCards (Player col con pos start cards) collectedCards =
 
 gatherCards :: Player -> Board -> ([Card],[Position])
 gatherCards player board =
-    allPaths player (bmap board) [[(position player)]] [] []
+    allPaths player (bmap board) [(position player)] [] []
 
-allPaths :: Player -> Map.Map Position Tile -> [[Position]] -> [Position] -> [Card] -> ([Card],[Position])
+allPaths :: Player -> Map.Map Position Tile -> [Position] -> [Position] -> [Card] -> ([Card],[Position])
 -- Search through all reachable tiles and gather the treasure cards
 allPaths player bmap frontier visited cards
-    | null sucFrontier = (cards, visited++curFrontier)
-    | otherwise = allPaths player bmap sucFrontier (visited++curFrontier) collected
+    | null sucFrontier = (cards, visited++frontier)
+    | otherwise = allPaths player bmap sucFrontier (visited++frontier) collected
   where
-    curFrontier = map head frontier
-    sucFrontier = [ (suc:cur) | cur <- frontier,
-                                suc <- neighbours (head cur) bmap,
-                                not $ suc `elem` visited ]
-    collected = foldl (collectCards bmap player) cards sucFrontier
+    sucFrontier = [ suc | cur <- frontier,
+                          suc <- neighbours cur bmap,
+                          not $ suc `elem` visited ]
+    collected = foldr (collectCards bmap player) cards sucFrontier
 
-collectCards :: Map.Map Position Tile -> Player -> [Card] -> [Position] -> [Card]
+collectCards :: Map.Map Position Tile -> Player -> Position -> [Card] -> [Card]
 -- Check the treasure on the current tile and check
 -- if you have the card associated with it
-collectCards bmap player cardAcc (suc:rest) =
+collectCards bmap player suc cardAcc =
     cardAcc ++ card
   where
     tile = bmap Map.! suc
@@ -365,7 +344,7 @@ askDirection (XTile kind _) = do
                        ++ show (Tile kind W (Tr 0)) ++ "(4)"
   input <- getLine
   let xtiledir = read input :: Int
-  return $ toEnum xtiledir
+  return $ toEnum $ xtiledir - 1
 
 askEntry :: IO Position
 -- Ask the position where to insert the XTile
@@ -379,8 +358,8 @@ askEntry = do
     then return $ Ps (row,col)
     else putStrLn "You cannot insert a tile here!" >> askEntry
   where
-    movable = [(r,c) | r<-[1..7], c<-[1..7],
-                       (r==1 || r==7 || c==1 || c==7)
+    movable = [(r,c) | r <- [1..7], c <- [1..7],
+                       (r == 1 || r == 7 || c == 1 || c == 7)
                        && (even c || even r)]
 
 moveAllowed :: Position -> [Player] -> Bool
@@ -392,30 +371,44 @@ moveAllowed entry players =
     fallsOff = exit entry
     pawnPoss = map position players
 
-selectMove :: [Player] -> XTile -> IO (Direction, Position)
+selectMove :: [Player] -> Board -> IO (Direction, Position)
 -- Select a move.
 -- For a human player: ask where to insert the XTile
 -- For an AI player: find the best place to insert the XTile
-selectMove ((Player color Human p s c):others) xtile = do
-  direction <- askDirection xtile
+selectMove ((Player color Human p s c):others) board = do
+  direction <- askDirection $ xtile board
   entry <- askEntry
   if moveAllowed entry ((Player color Human p s c):others)
   then return (direction, entry)
   else putStrLn "This move causes a player to fall off the board! Retry..."
-       >> selectMove ((Player color Human p s c):others) xtile
+       >> selectMove ((Player color Human p s c):others) board
 
-selectMove ((Player color AI _ _ _):others) xtile = return (N,Ps (1,2))
-
-shuffle :: [a] -> IO [a]
--- shuffle a list
-shuffle [] = return []
-shuffle xs = do
-  randomPos <- getStdRandom (randomR (0, length xs - 1))
-  let (left, (a:right)) = splitAt randomPos xs
-  fmap (a:) (shuffle (left ++ right))
-
-(-:) :: a -> (a -> b) -> b
-x -: f = f x
+-- TODO: Finish AI implementation
+-- selectMove ((Player color AI _ _ _):others) board =
+--   return $ selectBest ((Player color AI p s c):others) board
+--
+-- selectBest :: [Player] -> [Board] -> (Direction, Position)
+-- selectBest players board =
+--     fst $ maximumBy (comparing $ (length . snd)) validMoves
+--   where
+--     validMoves = tryMoves players board
+--
+-- tryMoves :: [Player] -> Board -> [((Direction, Position), [Card])]
+-- tryMoves players board = do
+--     entry <- entries
+--     direction <- directions
+--     guard (moveAllowed entry players)
+--     let cards = runReader (simMove (direction,entry)) (players,board)
+--     return ((direction,entry), cards)
+--   where
+--     directions = [N, E, S, W]
+--     entries = [(r,c) | r <- [1..7], c <- [1..7],
+--                           (r == 1 || r == 7 || c == 1 || c == 7)
+--                           && (even c || even r)]
+--
+-- simMove :: (Direction, Position) -> [Card]
+-- simMove (direction, entry) = do
+--   (player, board) <- ask
 
 exit :: Position -> Position
 -- Give the exit, given the entry
@@ -423,56 +416,3 @@ exit (Ps (1,col)) = Ps (7,col)
 exit (Ps (7,col)) = Ps (1,col)
 exit (Ps (row,1)) = Ps (row,7)
 exit (Ps (row,7)) = Ps (row,1)
-
-instance Show Board where
-  show (Board xtile bmap) =
-      "XTile: " ++ show xtile
-      ++ "\nBoard:\n"
-      ++ sep ++ "\n"
-      ++ (foldl pprint "" (sort keys))
-    where
-      sep = replicate 55 '-'
-      keys = Map.keys bmap
-      pprint :: String -> Position -> String
-      pprint acc (Ps (row, col))
-        | col == 7 = acc ++ (show $ bmap Map.! Ps (row,col)) ++ "\n" ++ sep ++ "\n"
-        | otherwise = acc ++ (show $ bmap Map.! Ps (row,col)) ++ "|"
-
-instance Show XTile where
-  show (XTile L t) = " ^ >" ++ show t
-  show (XTile T t) = "< v>" ++ show t
-  show (XTile I t) = " ^v " ++ show t
-
-instance Show Tile where
-  show (Tile L N t) = " ^ >" ++ show t
-  show (Tile L E t) = "  v>" ++ show t
-  show (Tile L S t) = "< v " ++ show t
-  show (Tile L W t) = "<^  " ++ show t
-  show (Tile T N t) = "< v>" ++ show t
-  show (Tile T E t) = "<^v " ++ show t
-  show (Tile T S t) = "<^ >" ++ show t
-  show (Tile T W t) = " ^v>" ++ show t
-  show (Tile I N t) = " ^v " ++ show t
-  show (Tile I E t) = "<  >" ++ show t
-  show (Tile I S t) = " ^v " ++ show t
-  show (Tile I W t) = "<  >" ++ show t
-
-instance Show Treasure where
-  show (Tr 0) = "   "
-  show (Tr x)
-    | x < 10 = "T0" ++ show x
-    | x >= 10 = "T" ++ show x
-
-instance Show Card where
-  show (Cd x)
-    | x < 10 = "C0" ++ show x
-    | x >= 10 = "C" ++ show x
-
-instance Show Position where
-  show (Ps (row,col)) =
-    show (row,col)
-
-instance Show Player where
-  show (Player color control position start cards) =
-    show color ++ " " ++ show control ++ " " ++ show position
-    ++ " " ++ show start ++ " " ++ show cards
