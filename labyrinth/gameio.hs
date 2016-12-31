@@ -1,5 +1,7 @@
 
-module GameIO (mkPlayers, mkBoard, askFilePath, printPos, printTile, printXTile) where
+module GameIO
+       (mkPlayers, mkBoard, askFilePath, printPos, printTile, printXTile)
+       where
 
 import System.FilePath.Posix ((-<.>))
 
@@ -11,6 +13,7 @@ import Utils
 import Data
 
 mkPlayers :: Int -> IO [Player]
+-- Initialize the players
 mkPlayers numHumans =
     shuffle cards >>= (\shuffled ->
       return $ zipWith5 (Player) colors controls starts starts (chunksOf 6 shuffled))
@@ -21,6 +24,7 @@ mkPlayers numHumans =
     starts = [Ps (1,1), Ps (1,7), Ps (7,1), Ps (7,7)]
 
 mkBoard :: IO Board
+-- Initialize the board
 mkBoard = do
     sKinds <- shuffle kinds
     sDirs <- shuffle dirs
@@ -57,6 +61,8 @@ askFilePath = do
   input <- getLine
   return $ input -<.> ".txt"
 
+-- Print instances --
+-- Used to serialize the game
 printPos :: Map.Map Position Tile -> Position -> String
 printPos bmap (Ps (r,c))
   | c == 7 && r == 7 = printTile $ bmap Map.! Ps (r,c)

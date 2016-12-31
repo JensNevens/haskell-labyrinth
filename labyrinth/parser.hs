@@ -39,7 +39,8 @@ colorP =
     mkColor "Green" = Green
 
 controlP :: Parsec String () Control
-controlP = liftM mkControl $ symbol "Human" <|> symbol "AI"
+controlP =
+    liftM mkControl $ symbol "Human" <|> symbol "AI"
   where
     mkControl :: String -> Control
     mkControl "Human" = Human
@@ -61,16 +62,16 @@ directionP =
     mkDirection "W" = W
 
 kindP :: Parsec String () Kind
-kindP = liftM mkKind $ symbol "L" <|> symbol "T" <|> symbol "I"
+kindP =
+    liftM mkKind $ symbol "L" <|> symbol "T" <|> symbol "I"
   where
     mkKind "L" = L
     mkKind "T" = T
     mkKind "I" = I
 
 treasureP :: Parsec String () Treasure
-treasureP = do
-  idx <- (symbol "T" >> integer) <|> (spaces >> return 0)
-  return $ Tr idx
+treasureP =
+  ((symbol "T" >> integer) <|> (spaces >> return 0)) >>= return . Tr
 
 tileP :: Parsec String () Tile
 tileP = liftM3 Tile kindP directionP treasureP
@@ -78,8 +79,9 @@ tileP = liftM3 Tile kindP directionP treasureP
 xtileP :: Parsec String () XTile
 xtileP = liftM2 XTile kindP treasureP
 
--- Utils --
+-- Parsing Utils --
 pair :: Parsec String () a -> Parsec String () b -> Parsec String () (a,b)
+-- Parse a pair with parsers p and q
 pair p q = do
   keyword "("
   val1 <- p
@@ -89,6 +91,7 @@ pair p q = do
   return (val1,val2)
 
 integer :: Parsec String () Int
+-- Parse an integer (positive or negative)
 integer = do
   spaces
   sign <- (string "-" >> return "-") <|> return ""
@@ -97,11 +100,17 @@ integer = do
   return $ read (sign ++ digits)
 
 keyword :: String -> Parsec String () ()
+-- Parse a string and return nothing
+-- If failed, put back all input
 keyword s = try (spaces >> string s >> return ())
 
 symbol :: String -> Parsec String () String
+-- Parse a string and return it
+-- If failed, but back all input
 symbol s = try (spaces >> string s)
 
 listOf :: Parsec String () a -> String -> String -> String -> Parsec String () [a]
+-- Parse a list of things, enclosed by the symbols 'open' and 'close'
+-- and split by the symbol 'sep'
 listOf p open sep close =
   between (keyword open) (keyword close) (p `sepBy` keyword sep)

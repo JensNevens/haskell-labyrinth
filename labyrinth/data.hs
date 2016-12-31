@@ -7,11 +7,11 @@ module Data
 import qualified Data.Map.Strict as Map
 import Data.List (sort)
 
--- Basic positions
+-- Basic positions --
 newtype Position = Ps (Int,Int)
                    deriving (Eq, Ord)
 
--- Player data
+-- Player data --
 data Color = Yellow | Red | Blue | Green deriving (Show)
 data Control = Human | AI deriving (Show)
 newtype Card = Cd Int -- The ID of the treasure to collect
@@ -23,7 +23,7 @@ data Player = Player {
                 start :: Position,
                 cards :: [Card] }
 
--- Board data
+-- Board data --
 data Direction = N | E | S | W deriving (Show, Read, Eq, Enum)
 data Kind = L | T | I deriving (Show)
 newtype Treasure = Tr Int -- The ID of the treasure
@@ -39,6 +39,8 @@ data Board = Board {
               xtile :: XTile,
               bmap :: Map.Map Position Tile }
 
+-- Show instances --
+-- Used during the game
 instance Show Board where
   show (Board xtile bmap) =
       "XTile: "

@@ -42,6 +42,16 @@ loop players board = do
     "-save" -> save players board
     otherwise -> play players board
 
+-- Each player has access to:
+--  the board (tiles, xtile, treasures, other pawns locations)
+--  the players own treasure cards
+--  the number of cards left for other players
+
+-- One move consists of:
+--  use xtile to shift a row/column
+--  get a new xtile as result
+--  gather all treasures reachable from position
+--  move to a reachable tile
 play :: [Player] -> Board -> IO ()
 play players board = do
   prePrint players board

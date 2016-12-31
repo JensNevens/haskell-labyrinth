@@ -1,5 +1,8 @@
 
-module Game (prePrint, selectMove, doMove, gatherCards, removeCards, movePlayer, postPrint, isWinner, announceWinner) where
+module Game
+       (prePrint, selectMove, doMove, gatherCards, removeCards,
+       movePlayer, postPrint, isWinner, announceWinner)
+       where
 
 import Control.Monad
 import Control.Monad.State
@@ -13,20 +16,13 @@ import Utils
 import Data
 import Parser
 
--- Each player has access to:
---  the board (tiles, xtile, treasures, other pawns locations)
---  the players own treasure cards
---  the number of cards left for other players
-
--- One move consists of:
---  use xtile to shift a row/column
---  get a new xtile as result
---  gather all treasures reachable from position
---  move to a reachable tile
-
+-- TODO:
 -- Turn of the prePrint and postPrint for AI players
 -- by using pattern matching on the first player's control
+
+-- Pre- and post-move printing of information --
 prePrint :: [Player] -> Board -> IO ()
+-- Show information prior to the move
 prePrint (me:others) board = do
     putStrLn $ "Player " ++ (show $ color me) ++ " can move!"
     putStrLn $ (show $ color me) ++ " is at " ++ (show $ position me)
@@ -41,6 +37,7 @@ prePrint (me:others) board = do
       ++ (show $ length cards) ++ " cards\n"
 
 postPrint :: [Player] -> Board -> [Position] -> [Card] -> IO ()
+-- SHow information after the move
 postPrint (me:others) board visited collectedCards = do
     putStrLn "Your move is over"
     putStrLn $ "You are now at " ++ (show $ position me)
@@ -56,164 +53,7 @@ postPrint (me:others) board visited collectedCards = do
     pprint (Player color control position _ _) =
       "Player " ++ show color ++ " (" ++ show control ++ ") is now at " ++ show position ++ "\n"
 
-announceWinner :: Player -> IO ()
-announceWinner (Player color _ _ _ _) =
-  putStrLn $ "Player " ++ (show color) ++ " has won!"
-
-isWinner :: Player -> Bool
-isWinner (Player _ _ position start []) =
-  position == start
-isWinner (Player _ _ _ _ cards) =
-  False
-
-askPosition :: [Position] -> IO Position
--- Ask the player where to move to
-askPosition visited = do
-  input <- getLine
-  let pair = read input :: (Int,Int)
-  if Ps pair `elem` visited
-  then return $ Ps pair
-  else putStrLn "This is not a valid choice. Retry..."
-       >> askPosition visited
-
-movePlayer :: Player -> [Position] -> IO Player
--- Move the player to a new tile
-movePlayer (Player color Human position start cards) visited = do
-  putStrLn "Where do you want to move? You can reach the following tiles:"
-  putStrLn $ show visited
-  newPos <- askPosition visited
-  return (Player color Human newPos start cards)
-
--- AI has collected all cards -> move to start position
-movePlayer (Player co AI pos st []) visited
-  | st `elem` visited = return $ Player co AI st st []
-  | otherwise = shuffle visited
-                >>= (\sVisited -> return $ Player co AI (head sVisited) st [])
-
--- AI has yet to collect cards -> move to random location
-movePlayer (Player co AI _ st ca) visited =
-  shuffle visited
-  >>= (\sVisited -> return $ Player co AI (head sVisited) st ca)
-
-removeCards :: Player -> [Card] -> Player
--- Remove the cards this player has collected
-removeCards (Player col con pos start cards) collectedCards =
-  (Player col con pos start (cards \\ collectedCards))
-
-gatherCards :: Player -> Board -> ([Card],[Position])
-gatherCards player board =
-    allPaths player (bmap board) [(position player)] [] []
-
-allPaths :: Player -> Map.Map Position Tile -> [Position] -> [Position] -> [Card] -> ([Card],[Position])
--- Search through all reachable tiles and gather the treasure cards
-allPaths player bmap frontier visited cards
-    | null sucFrontier = (nub cards, nub $ visited++frontier)
-    | otherwise = allPaths player bmap sucFrontier (visited++frontier) collected
-  where
-    sucFrontier = [ suc | cur <- frontier,
-                          suc <- neighbours cur bmap,
-                          not $ suc `elem` visited ]
-    collected = foldr (collectCards bmap player) cards sucFrontier
-
-collectCards :: Map.Map Position Tile -> Player -> Position -> [Card] -> [Card]
--- Check the treasure on the current tile and check
--- if you have the card associated with it
-collectCards bmap player suc cardAcc =
-    cardAcc ++ card
-  where
-    tile = bmap Map.! suc
-    card = filter (bingo $ treasure tile) (cards player)
-    bingo :: Treasure -> Card -> Bool
-    bingo (Tr x) (Cd y) = x == y
-
-canVisit :: Map.Map Position Tile -> Position -> Position -> Bool
--- Check if you can go from tile 1 to tile 2
-canVisit bmap (Ps (r1,c1)) (Ps (r2,c2)) =
-    case (rd, cd) of
-      (-1,0) -> N `elem` fromLinks && S `elem` toLinks -- to is above from
-      (0,1)  -> E `elem` fromLinks && W `elem` toLinks -- to is right of from
-      (1,0)  -> S `elem` fromLinks && N `elem` toLinks -- to is below from
-      (0,-1) -> W `elem` fromLinks && E `elem` toLinks -- to is left of from
-  where
-    (rd, cd) = (r2-r1, c2-c1)
-    fromLinks = links $ bmap Map.! (Ps (r1,c1))
-    toLinks = links $ bmap Map.! (Ps (r2,c2))
-
-links :: Tile -> [Direction]
--- In which direction can you enter/exit a tile
-links (Tile L N _) = [N,E]
-links (Tile L E _) = [E,S]
-links (Tile L S _) = [S,W]
-links (Tile L W _) = [W,N]
-links (Tile T N _) = [E,S,W]
-links (Tile T E _) = [N,S,W]
-links (Tile T S _) = [N,E,W]
-links (Tile T W _) = [N,E,S]
-links (Tile I N _) = [N,S]
-links (Tile I E _) = [E,W]
-links (Tile I S _) = [N,S]
-links (Tile I W _) = [E,W]
-
-neighbours :: Position -> Map.Map Position Tile -> [Position]
--- Determine the neighbours of a position that you are able
--- to visit. This depends on the kind and direction of both tiles
-neighbours pos bmap =
-    filter (canVisit bmap pos) $ filter inBounds $ allNeighbours pos
-  where
-    inBounds (Ps (row,col)) = row >= 1 && row <= 7 && col >= 1 && col <= 7
-    allNeighbours (Ps (row,col)) = [Ps (row-1,col), Ps (row+1,col),
-                                    Ps (row,col-1), Ps (row,col+1)]
-
-movePlayers :: [Player] -> Position -> [Player]
--- If a player is on the row/column that is going to shift
--- adjust it's position. Else, do nothing
-movePlayers players entry =
-    map go players
-  where
-    go :: Player -> Player
-    go (Player color control position start cards) =
-      (Player color control (shift position entry) start cards)
-
-shift :: Position  -> Position -> Position
--- Shift a position depending on the entry position
-shift (Ps (row,col)) (Ps (1,ecol))
-  | col == ecol = Ps (row+1,col)
-  | otherwise = Ps (row,col)
-shift (Ps (row,col)) (Ps (7,ecol))
-  | col == ecol = Ps (row-1,col)
-  | otherwise = Ps (row,col)
-shift (Ps (row,col)) (Ps (erow,1))
-  | row == erow = Ps (row,col+1)
-  | otherwise = Ps (row,col)
-shift (Ps (row,col)) (Ps (erow,7))
-  | row == erow = Ps (row,col-1)
-  | otherwise = Ps (row,col)
-
-moveBoard :: Board -> Direction -> Position -> Board
--- Get the new XTile from one end
--- Shift the tiles in the board
--- Insert the old XTile on the other end
-moveBoard (Board xtile bmap) dir entry =
-    Board newXTile bmap'
-  where
-    exitPos = exit entry
-    exitTile = bmap Map.! exitPos
-    newXTile = XTile (kind exitTile) (treasure exitTile)
-    newTile = Tile (xkind xtile) dir (xtreasure xtile)
-    go :: Position -> Position
-    go key = shift key entry
-    bmap' = bmap -: Map.delete exitPos
-                 -: Map.mapKeys go
-                 -: Map.insert entry newTile
-
-doMove :: (Direction, Position) -> [Player] -> Board -> ([Player],Board)
--- First, move the players' positions if they are on the shifted row/col
--- then, adjust the board bmap and get the new xtile
-doMove (direction, entry) players board =
-  let players' = movePlayers players entry
-      board' = moveBoard board direction entry
-  in (players', board')
-
+-- Select move --
 askDirection :: XTile -> IO Direction
 -- Ask the direction to insert the XTile
 askDirection (XTile kind _) = do
@@ -259,7 +99,6 @@ exit (Ps (row,1)) = Ps (row,7)
 exit (Ps (row,7)) = Ps (row,1)
 
 selectMove :: [Player] -> Board -> IO (Direction, Position)
--- Select a move.
 -- For a human player: ask where to insert the XTile
 selectMove ((Player color Human p s c):others) board = do
   direction <- askDirection $ xtile board
@@ -319,3 +158,169 @@ simMove move = do
   let (players', board') = doMove move players board
       (cards, visited) = gatherCards (head players') board'
   return (cards, visited)
+
+-- Do Move --
+doMove :: (Direction, Position) -> [Player] -> Board -> ([Player],Board)
+-- First, move the players' positions if they are on the shifted row/col
+-- then, adjust the board bmap and get the new xtile
+doMove (direction, entry) players board =
+    (players', board')
+  where
+    players' = movePlayers players entry
+    board' = moveBoard board direction entry
+
+movePlayers :: [Player] -> Position -> [Player]
+-- If a player is on the row/column that is going to shift
+-- adjust it's position. Else, do nothing
+movePlayers players entry =
+    map go players
+  where
+    go :: Player -> Player
+    go (Player color control position start cards) =
+      (Player color control (shift position entry) start cards)
+
+shift :: Position  -> Position -> Position
+-- Shift a position depending on the entry position
+shift (Ps (row,col)) (Ps (1,ecol))
+  | col == ecol = Ps (row+1,col)
+  | otherwise = Ps (row,col)
+shift (Ps (row,col)) (Ps (7,ecol))
+  | col == ecol = Ps (row-1,col)
+  | otherwise = Ps (row,col)
+shift (Ps (row,col)) (Ps (erow,1))
+  | row == erow = Ps (row,col+1)
+  | otherwise = Ps (row,col)
+shift (Ps (row,col)) (Ps (erow,7))
+  | row == erow = Ps (row,col-1)
+  | otherwise = Ps (row,col)
+
+moveBoard :: Board -> Direction -> Position -> Board
+-- Get the new XTile from one end
+-- Shift the tiles in the board
+-- Insert the old XTile on the other end
+moveBoard (Board xtile bmap) dir entry =
+    Board newXTile bmap'
+  where
+    exitPos = exit entry
+    exitTile = bmap Map.! exitPos
+    newXTile = XTile (kind exitTile) (treasure exitTile)
+    newTile = Tile (xkind xtile) dir (xtreasure xtile)
+    go :: Position -> Position
+    go key = shift key entry
+    bmap' = bmap -: Map.delete exitPos
+                 -: Map.mapKeys go
+                 -: Map.insert entry newTile
+
+-- Gather Cards --
+gatherCards :: Player -> Board -> ([Card],[Position])
+gatherCards player board =
+    allPaths player (bmap board) [(position player)] [] []
+
+allPaths :: Player -> Map.Map Position Tile -> [Position] -> [Position] -> [Card] -> ([Card],[Position])
+-- Search through all reachable tiles and gather the treasure cards
+allPaths player bmap frontier visited cards
+    | null sucFrontier = (nub cards, nub $ visited++frontier)
+    | otherwise = allPaths player bmap sucFrontier (visited++frontier) collected
+  where
+    sucFrontier = [ suc | cur <- frontier,
+                          suc <- neighbours cur bmap,
+                          not $ suc `elem` visited ]
+    collected = foldr (collectCards bmap player) cards sucFrontier
+
+neighbours :: Position -> Map.Map Position Tile -> [Position]
+-- Determine the neighbours of a position that you are able
+-- to visit. This depends on the kind and direction of both tiles
+neighbours pos bmap =
+    filter (canVisit bmap pos) $ filter inBounds $ allNeighbours pos
+  where
+    inBounds (Ps (row,col)) = row >= 1 && row <= 7 && col >= 1 && col <= 7
+    allNeighbours (Ps (row,col)) = [Ps (row-1,col), Ps (row+1,col),
+                                    Ps (row,col-1), Ps (row,col+1)]
+
+canVisit :: Map.Map Position Tile -> Position -> Position -> Bool
+-- Check if you can go from tile 1 to tile 2
+canVisit bmap (Ps (r1,c1)) (Ps (r2,c2)) =
+    case (rd, cd) of
+      (-1,0) -> N `elem` fromLinks && S `elem` toLinks -- to is above from
+      (0,1)  -> E `elem` fromLinks && W `elem` toLinks -- to is right of from
+      (1,0)  -> S `elem` fromLinks && N `elem` toLinks -- to is below from
+      (0,-1) -> W `elem` fromLinks && E `elem` toLinks -- to is left of from
+  where
+    (rd, cd) = (r2-r1, c2-c1)
+    fromLinks = links $ bmap Map.! (Ps (r1,c1))
+    toLinks = links $ bmap Map.! (Ps (r2,c2))
+
+links :: Tile -> [Direction]
+-- In which direction can you enter/exit a tile
+links (Tile L N _) = [N,E]
+links (Tile L E _) = [E,S]
+links (Tile L S _) = [S,W]
+links (Tile L W _) = [W,N]
+links (Tile T N _) = [E,S,W]
+links (Tile T E _) = [N,S,W]
+links (Tile T S _) = [N,E,W]
+links (Tile T W _) = [N,E,S]
+links (Tile I N _) = [N,S]
+links (Tile I E _) = [E,W]
+links (Tile I S _) = [N,S]
+links (Tile I W _) = [E,W]
+
+collectCards :: Map.Map Position Tile -> Player -> Position -> [Card] -> [Card]
+-- Check the treasure on the current tile and check
+-- if you have the card associated with it
+collectCards bmap player suc cardAcc =
+    cardAcc ++ card
+  where
+    tile = bmap Map.! suc
+    card = filter (bingo $ treasure tile) (cards player)
+    bingo :: Treasure -> Card -> Bool
+    bingo (Tr x) (Cd y) = x == y
+
+-- Remove Cards --
+removeCards :: Player -> [Card] -> Player
+-- Remove the cards this player has collected
+removeCards (Player col con pos start cards) collectedCards =
+  Player col con pos start (cards \\ collectedCards)
+
+-- Move Player --
+askPosition :: [Position] -> IO Position
+-- Ask the player where to move to
+askPosition visited = do
+  input <- getLine
+  let pair = read input :: (Int,Int)
+  if Ps pair `elem` visited
+  then return $ Ps pair
+  else putStrLn "This is not a valid choice. Retry..."
+       >> askPosition visited
+
+movePlayer :: Player -> [Position] -> IO Player
+-- Move the player to a new tile
+movePlayer (Player color Human _ start cards) visited = do
+ putStrLn "Where do you want to move? You can reach the following tiles:"
+ putStrLn $ show visited
+ newPos <- askPosition visited
+ return $ Player color Human newPos start cards
+
+-- AI has collected all cards -> move to start position
+movePlayer (Player co AI pos st []) visited
+  | st `elem` visited = return $ Player co AI st st []
+  | otherwise = shuffle visited
+                >>= (\sVisited -> return $ Player co AI (head sVisited) st [])
+
+-- AI has yet to collect cards -> move to random location
+movePlayer (Player co AI _ st ca) visited =
+  shuffle visited
+  >>= (\sVisited -> return $ Player co AI (head sVisited) st ca)
+
+-- Announce and check Winner --
+announceWinner :: Player -> IO ()
+-- Announce the winner of the game
+announceWinner (Player color _ _ _ _) =
+  putStrLn $ "Player " ++ (show color) ++ " has won!"
+
+isWinner :: Player -> Bool
+-- Check if the current player has won the game
+isWinner (Player _ _ position start []) =
+  position == start
+isWinner (Player _ _ _ _ cards) =
+  False
