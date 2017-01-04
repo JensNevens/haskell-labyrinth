@@ -55,7 +55,7 @@ loop players board = do
 play :: [Player] -> Board -> IO ()
 play players board = do
   prePrint players board
-  move <- selectMove players board
+  move <- retryForever $ selectMove players board
   let (players', board') = doMove move players board
       (cards, visited) = gatherCards (head players') board'
       firstPlayer = removeCards (head players') cards

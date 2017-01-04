@@ -1,9 +1,11 @@
 
 module Data
   (Position(..), Color(..), Control(..), Card(..), Player(..),
-   Direction(..), Kind(..), Treasure(..), Tile(..), XTile(..), Board(..))
+   Direction(..), Kind(..), Treasure(..), Tile(..), XTile(..), Board(..),
+   LabyrintError(..), AskMonad(..))
    where
 
+import Control.Monad.Trans.Except
 import qualified Data.Map.Strict as Map
 import Data.List (sort)
 
@@ -38,6 +40,15 @@ data XTile = XTile {
 data Board = Board {
               xtile :: XTile,
               bmap :: Map.Map Position Tile }
+
+-- Error handling --
+data LabyrintError = InvalidChoice
+                   | InvalidInput
+                   | InvalidMove
+
+-- IO Monad wrapped in Except Monad where the Error
+-- type is LabyrintError
+type AskMonad = ExceptT LabyrintError IO
 
 -- Show instances --
 -- Used during the game
@@ -94,3 +105,8 @@ instance Show Player where
   show (Player color control position start cards) =
     show color ++ " " ++ show control ++ " " ++ show position
     ++ " " ++ show start ++ " " ++ show cards
+
+instance Show LabyrintError where
+  show InvalidChoice = "ERROR - This is not a valid choice!"
+  show InvalidInput = "ERROR - This is not valid input!"
+  show InvalidMove = "ERROR - This causes a player to fall off the board!"

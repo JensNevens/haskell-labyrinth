@@ -12,4 +12,5 @@ shuffle xs = do
   fmap (a:) (shuffle (left ++ right))
 
 (-:) :: a -> (a -> b) -> b
+-- Is this not in standard Haskell?
 x -: f = f x

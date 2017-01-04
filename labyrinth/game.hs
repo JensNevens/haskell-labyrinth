@@ -1,20 +1,36 @@
 
 module Game
        (prePrint, selectMove, doMove, gatherCards, removeCards,
-       movePlayer, postPrint, isWinner, announceWinner)
+       movePlayer, postPrint, isWinner, announceWinner,
+       retryForever)
        where
 
 import Control.Monad
 import Control.Monad.State
 import Control.Monad.Reader
+import Control.Monad.Trans.Except
 
 import Data.List ((\\), maximumBy, minimumBy, nub)
 import qualified Data.Map.Strict as Map
 import Data.Ord (comparing)
 
+import Text.Read (readMaybe)
+
 import Utils
 import Data
 import Parser
+
+
+retryForever :: AskMonad a -> IO a
+-- Run an action in the AskMonad
+-- If it succeeds, return
+-- Else, show the error and retry
+retryForever action =
+    runExceptT action
+    >>= either (\ex -> handle ex >> retryForever action)
+               return
+  where
+    handle ex = putStrLn $ show ex
 
 -- TODO:
 -- Turn of the prePrint and postPrint for AI players
@@ -54,29 +70,30 @@ postPrint (me:others) board visited collectedCards = do
       "Player " ++ show color ++ " (" ++ show control ++ ") is now at " ++ show position ++ "\n"
 
 -- Select move --
-askDirection :: XTile -> IO Direction
--- Ask the direction to insert the XTile
-askDirection (XTile kind _) = do
-  putStrLn "In what direction do you want to insert the XTile?"
-  putStrLn $ "Choose " ++ show (Tile kind N (Tr 0)) ++ "(1), "
-                       ++ show (Tile kind E (Tr 0)) ++ "(2), "
-                       ++ show (Tile kind S (Tr 0)) ++ "(3), "
-                       ++ show (Tile kind W (Tr 0)) ++ "(4)"
-  input <- getLine
+askDirection :: XTile -> AskMonad Direction
+askDirection (XTile kind t) = do
+  liftIO $ putStrLn "In what direction do you want to insert the XTile?"
+  liftIO $ putStrLn $ "Choose " ++ show (Tile kind N (Tr 0)) ++ "(1), "
+                                ++ show (Tile kind E (Tr 0)) ++ "(2), "
+                                ++ show (Tile kind S (Tr 0)) ++ "(3), "
+                                ++ show (Tile kind W (Tr 0)) ++ "(4)"
+  input <- liftIO getLine
   let xtiledir = read input :: Int
-  return $ toEnum $ xtiledir - 1
+  if xtiledir `elem` [1,2,3,4]
+  then return $ toEnum $ xtiledir - 1
+  else throwE InvalidChoice
 
-askEntry :: IO Position
+askEntry :: AskMonad Position
 -- Ask the position where to insert the XTile
 askEntry = do
-    putStrLn "Where do you want to insert the XTile?"
-    putStrLn "You can only insert the XTile in even rows and columns on the edge of the board."
-    putStrLn "Give a row and column number in the format (row,column)."
-    input <- getLine
+    liftIO $ putStrLn "Where do you want to insert the XTile?"
+    liftIO $ putStrLn "You can only insert the XTile in even rows and columns on the edge of the board."
+    liftIO $ putStrLn "Give a row and column number in the format (row,column)."
+    input <- liftIO $ getLine
     let (row,col) = read input :: (Int,Int)
     if (row,col) `elem` movable
     then return $ Ps (row,col)
-    else putStrLn "You cannot insert a tile here!" >> askEntry
+    else throwE InvalidInput
   where
     movable = [(r,c) | r <- [1..7], c <- [1..7],
                        (r == 1 || r == 7 || c == 1 || c == 7)
@@ -98,15 +115,14 @@ exit (Ps (7,col)) = Ps (1,col)
 exit (Ps (row,1)) = Ps (row,7)
 exit (Ps (row,7)) = Ps (row,1)
 
-selectMove :: [Player] -> Board -> IO (Direction, Position)
+selectMove :: [Player] -> Board -> AskMonad (Direction, Position)
 -- For a human player: ask where to insert the XTile
 selectMove ((Player color Human p s c):others) board = do
-  direction <- askDirection $ xtile board
-  entry <- askEntry
+  direction <- liftIO $ retryForever $ askDirection (xtile board)
+  entry <- liftIO $ retryForever $ askEntry
   if moveAllowed entry ((Player color Human p s c):others)
   then return (direction, entry)
-  else putStrLn "This move causes a player to fall off the board! Retry..."
-       >> selectMove ((Player color Human p s c):others) board
+  else throwE InvalidMove
 
 -- AI has no more cards to collect, so it needs to go to the finish
 selectMove ((Player color AI p s []):others) board =
@@ -218,6 +234,8 @@ gatherCards player board =
 
 allPaths :: Player -> Map.Map Position Tile -> [Position] -> [Position] -> [Card] -> ([Card],[Position])
 -- Search through all reachable tiles and gather the treasure cards
+-- The 'nub' is purely for visual reasons. Could be left out, since it is O(n^2)
+-- It is possible to collect a card multiple times, but this has no effect or causes no errors
 allPaths player bmap frontier visited cards
     | null sucFrontier = (nub cards, nub $ visited++frontier)
     | otherwise = allPaths player bmap sucFrontier (visited++frontier) collected
@@ -283,22 +301,21 @@ removeCards (Player col con pos start cards) collectedCards =
   Player col con pos start (cards \\ collectedCards)
 
 -- Move Player --
-askPosition :: [Position] -> IO Position
+askPosition :: [Position] -> AskMonad Position
 -- Ask the player where to move to
 askPosition visited = do
-  input <- getLine
+  input <- liftIO $ getLine
   let pair = read input :: (Int,Int)
   if Ps pair `elem` visited
   then return $ Ps pair
-  else putStrLn "This is not a valid choice. Retry..."
-       >> askPosition visited
+  else throwE InvalidChoice
 
 movePlayer :: Player -> [Position] -> IO Player
 -- Move the player to a new tile
 movePlayer (Player color Human _ start cards) visited = do
  putStrLn "Where do you want to move? You can reach the following tiles:"
  putStrLn $ show visited
- newPos <- askPosition visited
+ newPos <- retryForever $ askPosition visited
  return $ Player color Human newPos start cards
 
 -- AI has collected all cards -> move to start position

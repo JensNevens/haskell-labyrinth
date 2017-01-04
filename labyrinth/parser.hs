@@ -11,12 +11,14 @@ import Control.Monad
 import Data
 
 gameP :: Parsec String () ([Player], Board)
+-- To parse the game, parse 4 players and the board
 gameP = do
   players <- count 4 playerP
   board <- boardP
   return (players,board)
 
 boardP :: Parsec String () Board
+-- To parse the board, parse the xtile and all tiles
 boardP = do
     xtile <- xtileP
     tiles <- listOf tileP "[" "," "]"
@@ -25,10 +27,12 @@ boardP = do
     positions = [Ps (row,col) | row <- [1..7], col <- [1..7] ]
 
 playerP :: Parsec String () Player
+-- To parse a player, parse its color, control, position, start and cards
 playerP =
   liftM5 Player colorP controlP positionP positionP (listOf cardP "[" "," "]")
 
 colorP :: Parsec String () Color
+-- Parse a color
 colorP =
     liftM mkColor $ symbol "Yellow" <|> symbol "Red" <|> symbol "Blue" <|> symbol "Green"
   where
@@ -39,6 +43,7 @@ colorP =
     mkColor "Green" = Green
 
 controlP :: Parsec String () Control
+-- Parse the control
 controlP =
     liftM mkControl $ symbol "Human" <|> symbol "AI"
   where
@@ -47,36 +52,47 @@ controlP =
     mkControl "AI" = AI
 
 positionP :: Parsec String () Position
+-- Parse a position (a pair)
 positionP = liftM Ps $ pair integer integer
 
 cardP :: Parsec String () Card
+-- Parse a card
 cardP = liftM Cd $ keyword "C" >> integer
 
 directionP :: Parsec String () Direction
+-- Parse a drection
 directionP =
     liftM mkDirection $ symbol "N" <|> symbol "E" <|> symbol "S" <|> symbol "W"
   where
+    mkDirection :: String -> Direction
     mkDirection "N" = N
     mkDirection "E" = E
     mkDirection "S" = S
     mkDirection "W" = W
 
 kindP :: Parsec String () Kind
+-- Parse a kind
 kindP =
     liftM mkKind $ symbol "L" <|> symbol "T" <|> symbol "I"
   where
+    mkKind :: String -> Kind
     mkKind "L" = L
     mkKind "T" = T
     mkKind "I" = I
 
 treasureP :: Parsec String () Treasure
+-- Parse a treasure
+-- If a tile contains no treasure, it is left blank
+-- Load this as Treasure with idx 0
 treasureP =
   ((symbol "T" >> integer) <|> (spaces >> return 0)) >>= return . Tr
 
 tileP :: Parsec String () Tile
+-- To parse a tile, parse the kind, direction and treasure
 tileP = liftM3 Tile kindP directionP treasureP
 
 xtileP :: Parsec String () XTile
+-- To parse a xtile, parse the kind and treasure
 xtileP = liftM2 XTile kindP treasureP
 
 -- Parsing Utils --
