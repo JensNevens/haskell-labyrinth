@@ -2,10 +2,11 @@
 module Data
   (Position(..), Color(..), Control(..), Card(..), Player(..),
    Direction(..), Kind(..), Treasure(..), Tile(..), XTile(..), Board(..),
-   LabyrintError(..), AskMonad(..))
+   LabyrintError(..), AskMonad(..), Show(..), Serialize(..))
    where
 
 import Control.Monad.Trans.Except
+
 import qualified Data.Map.Strict as Map
 import Data.List (sort)
 
@@ -50,8 +51,55 @@ data LabyrintError = InvalidChoice
 -- type is LabyrintError
 type AskMonad = ExceptT LabyrintError IO
 
+-- Serialize instances --
+-- Used to serialize the game
+class Serialize a where
+  serialize :: a -> String
+
+instance Serialize Player where
+  serialize (Player color control position start cards) =
+    show color ++ " "
+    ++ show control ++ " "
+    ++ show position ++ " "
+    ++ show start ++ " "
+    ++ show cards
+
+instance Serialize Board where
+  serialize (Board xtile bmap) =
+      serialize xtile ++
+      "\n[" ++ (concat $ map (serializePos bmap) (sort keys)) ++ "]"
+    where
+      keys = Map.keys bmap
+
+serializePos :: Map.Map Position Tile -> Position -> String
+serializePos bmap (Ps (r,c))
+  | c == 7 && r == 7 = serialize $ bmap Map.! Ps (r,c)
+  | otherwise = (serialize $ bmap Map.! Ps (r,c)) ++ ","
+
+instance Serialize Tile where
+  serialize (Tile L N t) = "LN" ++ serialize t
+  serialize (Tile L E t) = "LE" ++ serialize t
+  serialize (Tile L S t) = "LS" ++ serialize t
+  serialize (Tile L W t) = "LW" ++ serialize t
+  serialize (Tile T N t) = "TN" ++ serialize t
+  serialize (Tile T E t) = "TE" ++ serialize t
+  serialize (Tile T S t) = "TS" ++ serialize t
+  serialize (Tile T W t) = "TW" ++ serialize t
+  serialize (Tile I N t) = "IN" ++ serialize t
+  serialize (Tile I E t) = "IE" ++ serialize t
+  serialize (Tile I S t) = "IS" ++ serialize t
+  serialize (Tile I W t) = "IW" ++ serialize t
+
+instance Serialize XTile where
+  serialize (XTile L t) = "L" ++ serialize t
+  serialize (XTile T t) = "T" ++ serialize t
+  serialize (XTile I t) = "I" ++ serialize t
+
+instance Serialize Treasure where
+  serialize (Tr x) = "T" ++ show x
+
 -- Show instances --
--- Used during the game
+-- Used to show the game to the user
 instance Show Board where
   show (Board xtile bmap) =
       "XTile: "
@@ -92,19 +140,18 @@ instance Show Treasure where
     | x < 10 = "T0" ++ show x
     | x >= 10 = "T" ++ show x
 
+instance Show Player where
+  show (Player color control position _ cards) =
+    "Player " ++ show color ++ " (" ++ show control ++ ") is at "
+    ++ show position ++ " and has yet to collect "
+    ++ (show $ length cards) ++ " cards"
+
 instance Show Card where
-  show (Cd x)
-    | x < 10 = "C0" ++ show x
-    | x >= 10 = "C" ++ show x
+  show (Cd x) = "C" ++ show x
 
 instance Show Position where
   show (Ps (row,col)) =
     show (row,col)
-
-instance Show Player where
-  show (Player color control position start cards) =
-    show color ++ " " ++ show control ++ " " ++ show position
-    ++ " " ++ show start ++ " " ++ show cards
 
 instance Show LabyrintError where
   show InvalidChoice = "ERROR - This is not a valid choice!"

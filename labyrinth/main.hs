@@ -27,9 +27,7 @@ main = do
 
 newGame :: IO ()
 newGame = do
-  putStrLn "How many players will be playing today? (0-4)"
-  input <- getLine
-  let numHumans = read input :: Int
+  numHumans <- retryForever $ askPlayerCount
   players <- mkPlayers numHumans
   board <- mkBoard
   loop players board
@@ -60,7 +58,7 @@ play players board = do
       (cards, visited) = gatherCards (head players') board'
       firstPlayer = removeCards (head players') cards
   firstPlayer' <- movePlayer firstPlayer visited
-  postPrint (firstPlayer':(tail players')) board' visited cards
+  postPrint (firstPlayer':(tail players')) board' cards
   if isWinner firstPlayer'
   then announceWinner firstPlayer'
   else let nextPlayers = tail players' ++ [firstPlayer']
@@ -76,12 +74,9 @@ load filename = do
     Right (players,board) -> loop players board
 
 save :: [Player] -> Board -> IO ()
-save players (Board xtile bmap) = do
-    filepath <- askFilePath
-    let playerData = concat $ map ((++ "\n") . show) players
-        boardData = printXTile xtile
-                    ++ "\n[" ++ (concat $ map (printPos bmap) (sort keys)) ++ "]"
-    writeFile filepath $ playerData ++ boardData
-    putStrLn $ "Game saved in " ++ filepath
-  where
-    keys = Map.keys bmap
+save players board = do
+  filepath <- askFilePath
+  let playerData = concat $ map ((++ "\n") . serialize) players
+      boardData = serialize board
+  writeFile filepath $ playerData ++ boardData
+  putStrLn $ "Game saved in " ++ filepath

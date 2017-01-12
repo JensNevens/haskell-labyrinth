@@ -82,10 +82,7 @@ kindP =
 
 treasureP :: Parsec String () Treasure
 -- Parse a treasure
--- If a tile contains no treasure, it is left blank
--- Load this as Treasure with idx 0
-treasureP =
-  ((symbol "T" >> integer) <|> (spaces >> return 0)) >>= return . Tr
+treasureP = liftM Tr $ keyword "T" >> integer
 
 tileP :: Parsec String () Tile
 -- To parse a tile, parse the kind, direction and treasure

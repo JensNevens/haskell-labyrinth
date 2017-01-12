@@ -1,9 +1,15 @@
 
 module GameIO
-       (mkPlayers, mkBoard, askFilePath, printPos, printTile, printXTile)
+       (mkPlayers, mkBoard,
+       askPlayerCount, askFilePath, askDirection, askEntry, askPosition,
+       prePrint, postPrint)
        where
 
 import System.FilePath.Posix ((-<.>))
+import System.Process (callCommand)
+
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Except
 
 import Data.List (zipWith5)
 import Data.List.Split (chunksOf)
@@ -41,6 +47,7 @@ mkBoard = do
     positions = [Ps (r,c) | r <- [1..7], c <- [1..7], even c || even r]
 
 fixedTiles :: Map.Map Position Tile
+-- Generate the fixed tiles of the board
 fixedTiles =
     Map.fromList $ zip positions (zipWith3 (Tile) kinds dirs treasures)
   where
@@ -55,34 +62,86 @@ fixedTiles =
              N, S, S, W]
     treasures = replicate 16 $ Tr 0
 
+askPlayerCount :: AskMonad Int
+-- Ask how many players will be playing
+askPlayerCount = do
+  liftIO $ putStrLn "How many players will be playing today? (0-4)"
+  input <- liftIO $ getLine
+  let numHumans = read input :: Int
+  if numHumans `elem` [0..4]
+  then return numHumans
+  else throwE InvalidChoice
+
 askFilePath :: IO FilePath
+-- Ask the file path to save the game
 askFilePath = do
   putStrLn "Please enter the name of the file to save your game"
   input <- getLine
   return $ input -<.> ".txt"
 
--- Print instances --
--- Used to serialize the game
-printPos :: Map.Map Position Tile -> Position -> String
-printPos bmap (Ps (r,c))
-  | c == 7 && r == 7 = printTile $ bmap Map.! Ps (r,c)
-  | otherwise = (printTile $ bmap Map.! Ps (r,c)) ++ ","
+askDirection :: XTile -> AskMonad Direction
+-- Ask the direction to insert the XTile
+askDirection (XTile kind t) = do
+  liftIO $ putStrLn "In what direction do you want to insert the XTile?"
+  liftIO $ putStrLn $ "Choose " ++ show (Tile kind N (Tr 0)) ++ "(1), "
+                                ++ show (Tile kind E (Tr 0)) ++ "(2), "
+                                ++ show (Tile kind S (Tr 0)) ++ "(3), "
+                                ++ show (Tile kind W (Tr 0)) ++ "(4)"
+  input <- liftIO getLine
+  let xtiledir = read input :: Int
+  if xtiledir `elem` [1..4]
+  then return $ toEnum $ xtiledir - 1
+  else throwE InvalidChoice
 
-printTile :: Tile -> String
-printTile (Tile L N t) = "LN" ++ show t
-printTile (Tile L E t) = "LE" ++ show t
-printTile (Tile L S t) = "LS" ++ show t
-printTile (Tile L W t) = "LW" ++ show t
-printTile (Tile T N t) = "TN" ++ show t
-printTile (Tile T E t) = "TE" ++ show t
-printTile (Tile T S t) = "TS" ++ show t
-printTile (Tile T W t) = "TW" ++ show t
-printTile (Tile I N t) = "IN" ++ show t
-printTile (Tile I E t) = "IE" ++ show t
-printTile (Tile I S t) = "IS" ++ show t
-printTile (Tile I W t) = "IW" ++ show t
+askEntry :: AskMonad Position
+-- Ask the position where to insert the XTile
+askEntry = do
+    liftIO $ putStrLn "Where do you want to insert the XTile?"
+    liftIO $ putStrLn "You can only insert the XTile in even rows and columns on the edge of the board."
+    liftIO $ putStrLn "Give a row and column number in the format (row,column)."
+    input <- liftIO $ getLine
+    let (row,col) = read input :: (Int,Int)
+    if (row,col) `elem` movable
+    then return $ Ps (row,col)
+    else throwE InvalidInput
+  where
+    movable = [(r,c) | r <- [1..7], c <- [1..7],
+                       (r == 1 || r == 7 || c == 1 || c == 7)
+                       && (even c || even r)]
 
-printXTile :: XTile -> String
-printXTile (XTile L t) = "L" ++ show t
-printXTile (XTile T t) = "T" ++ show t
-printXTile (XTile I t) = "I" ++ show t
+askPosition :: [Position] -> AskMonad Position
+-- Ask the player where to move to
+askPosition visited = do
+  input <- liftIO $ getLine
+  let pair = read input :: (Int,Int)
+  if Ps pair `elem` visited
+  then return $ Ps pair
+  else throwE InvalidChoice
+
+-- TODO:
+-- Turn of the prePrint and postPrint for AI players
+-- by using pattern matching on the first player's control
+
+-- Pre- and post-move printing of information --
+prePrint :: [Player] -> Board -> IO ()
+-- Show information prior to the move
+prePrint (me:others) board = do
+  putStrLn $ "Player " ++ (show $ color me) ++ " can move!"
+  putStrLn $ "You are at " ++ (show $ position me)
+  putStrLn $ "You have these cards: " ++ (show $ cards me)
+  putStrLn $ concat $ map ((++ "\n") . show) others
+  putStrLn $ show board
+
+postPrint :: [Player] -> Board -> [Card] -> IO ()
+-- SHow information after the move
+postPrint (me:others) board collectedCards = do
+  callCommand "clear"
+  putStrLn "Your move is over"
+  putStrLn $ "You are now at " ++ (show $ position me)
+  putStrLn $ "You collected these cards: " ++ show collectedCards
+  putStrLn $ "You have these cards left: " ++ (show $ cards me)
+  putStrLn $ concat $ map ((++ "\n") . show) others
+  putStrLn $ show board
+  putStrLn "Press any key to continue"
+  input <- getLine
+  return ()

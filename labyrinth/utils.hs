@@ -1,7 +1,11 @@
 
-module Utils (shuffle, (-:)) where
+module Utils (shuffle, (-:), retryForever) where
 
 import System.Random
+
+import Control.Monad.Trans.Except
+
+import Data
 
 shuffle :: [a] -> IO [a]
 -- shuffle a list
@@ -14,3 +18,14 @@ shuffle xs = do
 (-:) :: a -> (a -> b) -> b
 -- Is this not in standard Haskell?
 x -: f = f x
+
+retryForever :: AskMonad a -> IO a
+-- Run an action in the AskMonad
+-- If it succeeds, return
+-- Else, show the error and retry
+retryForever action =
+    runExceptT action
+    >>= either (\ex -> handle ex >> retryForever action)
+               return
+  where
+    handle ex = putStrLn $ show ex

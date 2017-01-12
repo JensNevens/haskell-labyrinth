@@ -1,12 +1,10 @@
 
 module Game
-       (prePrint, selectMove, doMove, gatherCards, removeCards,
-       movePlayer, postPrint, isWinner, announceWinner,
-       retryForever)
+       (selectMove, doMove, gatherCards, removeCards,
+       movePlayer, isWinner, announceWinner)
        where
 
 import Control.Monad
-import Control.Monad.State
 import Control.Monad.Reader
 import Control.Monad.Trans.Except
 
@@ -14,91 +12,14 @@ import Data.List ((\\), maximumBy, minimumBy, nub)
 import qualified Data.Map.Strict as Map
 import Data.Ord (comparing)
 
-import Text.Read (readMaybe)
-
 import Utils
 import Data
 import Parser
+import GameIO
 
-
-retryForever :: AskMonad a -> IO a
--- Run an action in the AskMonad
--- If it succeeds, return
--- Else, show the error and retry
-retryForever action =
-    runExceptT action
-    >>= either (\ex -> handle ex >> retryForever action)
-               return
-  where
-    handle ex = putStrLn $ show ex
-
--- TODO:
--- Turn of the prePrint and postPrint for AI players
--- by using pattern matching on the first player's control
-
--- Pre- and post-move printing of information --
-prePrint :: [Player] -> Board -> IO ()
--- Show information prior to the move
-prePrint (me:others) board = do
-    putStrLn $ "Player " ++ (show $ color me) ++ " can move!"
-    putStrLn $ (show $ color me) ++ " is at " ++ (show $ position me)
-    putStrLn $ (show $ color me) ++ " has these cards: " ++ (show $ cards me)
-    putStrLn $ concat $ map pprint others
-    putStrLn $ show board
-  where
-    pprint :: Player -> String
-    pprint (Player color control position _ cards) =
-      "Player " ++ show color ++ " (" ++ show control ++ ") is at "
-      ++ show position ++ " and has yet to collect "
-      ++ (show $ length cards) ++ " cards\n"
-
-postPrint :: [Player] -> Board -> [Position] -> [Card] -> IO ()
--- SHow information after the move
-postPrint (me:others) board visited collectedCards = do
-    putStrLn "Your move is over"
-    putStrLn $ "You are now at " ++ (show $ position me)
-    putStrLn $ concat $ map pprint others
-    putStrLn $ "You visited these positions: " ++ show visited
-    putStrLn $ "You collected these cards: " ++ show collectedCards
-    putStrLn $ show board
-    putStrLn "Press any key to continue"
-    input <- getLine
-    return ()
-  where
-    pprint :: Player -> String
-    pprint (Player color control position _ _) =
-      "Player " ++ show color ++ " (" ++ show control ++ ") is now at " ++ show position ++ "\n"
-
+-----------------
 -- Select move --
-askDirection :: XTile -> AskMonad Direction
-askDirection (XTile kind t) = do
-  liftIO $ putStrLn "In what direction do you want to insert the XTile?"
-  liftIO $ putStrLn $ "Choose " ++ show (Tile kind N (Tr 0)) ++ "(1), "
-                                ++ show (Tile kind E (Tr 0)) ++ "(2), "
-                                ++ show (Tile kind S (Tr 0)) ++ "(3), "
-                                ++ show (Tile kind W (Tr 0)) ++ "(4)"
-  input <- liftIO getLine
-  let xtiledir = read input :: Int
-  if xtiledir `elem` [1,2,3,4]
-  then return $ toEnum $ xtiledir - 1
-  else throwE InvalidChoice
-
-askEntry :: AskMonad Position
--- Ask the position where to insert the XTile
-askEntry = do
-    liftIO $ putStrLn "Where do you want to insert the XTile?"
-    liftIO $ putStrLn "You can only insert the XTile in even rows and columns on the edge of the board."
-    liftIO $ putStrLn "Give a row and column number in the format (row,column)."
-    input <- liftIO $ getLine
-    let (row,col) = read input :: (Int,Int)
-    if (row,col) `elem` movable
-    then return $ Ps (row,col)
-    else throwE InvalidInput
-  where
-    movable = [(r,c) | r <- [1..7], c <- [1..7],
-                       (r == 1 || r == 7 || c == 1 || c == 7)
-                       && (even c || even r)]
-
+-----------------
 moveAllowed :: Position -> [Player] -> Bool
 -- Check if a move does not cause another player
 -- to fall of the board
@@ -175,7 +96,9 @@ simMove move = do
       (cards, visited) = gatherCards (head players') board'
   return (cards, visited)
 
+-------------
 -- Do Move --
+-------------
 doMove :: (Direction, Position) -> [Player] -> Board -> ([Player],Board)
 -- First, move the players' positions if they are on the shifted row/col
 -- then, adjust the board bmap and get the new xtile
@@ -227,7 +150,9 @@ moveBoard (Board xtile bmap) dir entry =
                  -: Map.mapKeys go
                  -: Map.insert entry newTile
 
+------------------
 -- Gather Cards --
+------------------
 gatherCards :: Player -> Board -> ([Card],[Position])
 gatherCards player board =
     allPaths player (bmap board) [(position player)] [] []
@@ -294,22 +219,17 @@ collectCards bmap player suc cardAcc =
     bingo :: Treasure -> Card -> Bool
     bingo (Tr x) (Cd y) = x == y
 
+------------------
 -- Remove Cards --
+------------------
 removeCards :: Player -> [Card] -> Player
 -- Remove the cards this player has collected
 removeCards (Player col con pos start cards) collectedCards =
   Player col con pos start (cards \\ collectedCards)
 
+-----------------
 -- Move Player --
-askPosition :: [Position] -> AskMonad Position
--- Ask the player where to move to
-askPosition visited = do
-  input <- liftIO $ getLine
-  let pair = read input :: (Int,Int)
-  if Ps pair `elem` visited
-  then return $ Ps pair
-  else throwE InvalidChoice
-
+-----------------
 movePlayer :: Player -> [Position] -> IO Player
 -- Move the player to a new tile
 movePlayer (Player color Human _ start cards) visited = do
@@ -329,7 +249,9 @@ movePlayer (Player co AI _ st ca) visited =
   shuffle visited
   >>= (\sVisited -> return $ Player co AI (head sVisited) st ca)
 
+-------------------------------
 -- Announce and check Winner --
+-------------------------------
 announceWinner :: Player -> IO ()
 -- Announce the winner of the game
 announceWinner (Player color _ _ _ _) =
