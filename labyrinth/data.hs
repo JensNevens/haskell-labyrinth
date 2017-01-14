@@ -67,14 +67,13 @@ instance Serialize Player where
 instance Serialize Board where
   serialize (Board xtile bmap) =
       serialize xtile ++
-      "\n[" ++ (concat $ map (serializePos bmap) (sort keys)) ++ "]"
+      "\n[" ++ (concat $ map serializePos (sort keys)) ++ "]"
     where
       keys = Map.keys bmap
-
-serializePos :: Map.Map Position Tile -> Position -> String
-serializePos bmap (Ps (r,c))
-  | c == 7 && r == 7 = serialize $ bmap Map.! Ps (r,c)
-  | otherwise = (serialize $ bmap Map.! Ps (r,c)) ++ ","
+      serializePos :: Position -> String
+      serializePos (Ps (r,c))
+        | c == 7 && r == 7 = serialize $ bmap Map.! Ps (r,c)
+        | otherwise = (serialize $ bmap Map.! Ps (r,c)) ++ ","
 
 instance Serialize Tile where
   serialize (Tile L N t) = "LN" ++ serialize t
