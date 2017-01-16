@@ -125,23 +125,27 @@ askPosition visited = do
 -- Pre- and post-move printing of information --
 prePrint :: [Player] -> Board -> IO ()
 -- Show information prior to the move
-prePrint (me:others) board = do
-  putStrLn $ "Player " ++ (show $ color me) ++ " can move!"
-  putStrLn $ "You are at " ++ (show $ position me)
-  putStrLn $ "You have these cards: " ++ (show $ cards me)
+prePrint ((Player color Human position _ cards):others) board = do
+  putStrLn $ "Player " ++ (show color) ++ " can move!"
+  putStrLn $ "You are at " ++ (show position)
+  putStrLn $ "You have these cards: " ++ (show cards)
   putStrLn $ concat $ map ((++ "\n") . show) others
   putStrLn $ show board
 
+prePrint ((Player _ AI _ _ _):others) board = return ()
+
 postPrint :: [Player] -> Board -> [Card] -> IO ()
 -- SHow information after the move
-postPrint (me:others) board collectedCards = do
+postPrint ((Player color Human position _ cards):others) board collectedCards = do
   callCommand "clear"
   putStrLn "Your move is over"
-  putStrLn $ "You are now at " ++ (show $ position me)
+  putStrLn $ "You are now at " ++ (show position)
   putStrLn $ "You collected these cards: " ++ show collectedCards
-  putStrLn $ "You have these cards left: " ++ (show $ cards me)
+  putStrLn $ "You have these cards left: " ++ (show cards)
   putStrLn $ concat $ map ((++ "\n") . show) others
   putStrLn $ show board
   putStrLn "Press any key to continue"
   input <- getLine
   return ()
+
+postPrint ((Player _ AI _ _ _):others) board collectedCards = return ()
