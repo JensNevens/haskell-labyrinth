@@ -15,8 +15,8 @@ newtype Position = Ps (Int,Int)
                    deriving (Eq, Ord)
 
 -- Player data --
-data Color = Yellow | Red | Blue | Green deriving (Show)
-data Control = Human | AI deriving (Show)
+data Color = Yellow | Red | Blue | Green deriving (Show, Read)
+data Control = Human | AI deriving (Show, Read)
 newtype Card = Cd Int -- The ID of the treasure to collect
                deriving (Eq)
 data Player = Player {
@@ -28,7 +28,7 @@ data Player = Player {
 
 -- Board data --
 data Direction = N | E | S | W deriving (Show, Read, Eq, Enum)
-data Kind = L | T | I deriving (Show)
+data Kind = L | T | I deriving (Show, Read)
 newtype Treasure = Tr Int -- The ID of the treasure
                    deriving (Eq)
 data Tile = Tile {

@@ -34,22 +34,22 @@ playerP =
 colorP :: Parsec String () Color
 -- Parse a color
 colorP =
-    liftM mkColor $ symbol "Yellow" <|> symbol "Red" <|> symbol "Blue" <|> symbol "Green"
-  where
-    mkColor :: String -> Color
-    mkColor "Yellow" = Yellow
-    mkColor "Red" = Red
-    mkColor "Blue" = Blue
-    mkColor "Green" = Green
+    liftM read $ symbol "Yellow" <|> symbol "Red" <|> symbol "Blue" <|> symbol "Green"
+  -- where
+  --   mkColor :: String -> Color
+  --   mkColor "Yellow" = Yellow
+  --   mkColor "Red" = Red
+  --   mkColor "Blue" = Blue
+  --   mkColor "Green" = Green
 
 controlP :: Parsec String () Control
 -- Parse the control
 controlP =
-    liftM mkControl $ symbol "Human" <|> symbol "AI"
-  where
-    mkControl :: String -> Control
-    mkControl "Human" = Human
-    mkControl "AI" = AI
+    liftM read $ symbol "Human" <|> symbol "AI"
+  -- where
+  --   mkControl :: String -> Control
+  --   mkControl "Human" = Human
+  --   mkControl "AI" = AI
 
 positionP :: Parsec String () Position
 -- Parse a position (a pair)
@@ -62,23 +62,23 @@ cardP = liftM Cd $ keyword "C" >> integer
 directionP :: Parsec String () Direction
 -- Parse a drection
 directionP =
-    liftM mkDirection $ symbol "N" <|> symbol "E" <|> symbol "S" <|> symbol "W"
-  where
-    mkDirection :: String -> Direction
-    mkDirection "N" = N
-    mkDirection "E" = E
-    mkDirection "S" = S
-    mkDirection "W" = W
+    liftM read $ symbol "N" <|> symbol "E" <|> symbol "S" <|> symbol "W"
+  -- where
+  --   mkDirection :: String -> Direction
+  --   mkDirection "N" = N
+  --   mkDirection "E" = E
+  --   mkDirection "S" = S
+  --   mkDirection "W" = W
 
 kindP :: Parsec String () Kind
 -- Parse a kind
 kindP =
-    liftM mkKind $ symbol "L" <|> symbol "T" <|> symbol "I"
-  where
-    mkKind :: String -> Kind
-    mkKind "L" = L
-    mkKind "T" = T
-    mkKind "I" = I
+    liftM read $ symbol "L" <|> symbol "T" <|> symbol "I"
+  -- where
+  --   mkKind :: String -> Kind
+  --   mkKind "L" = L
+  --   mkKind "T" = T
+  --   mkKind "I" = I
 
 treasureP :: Parsec String () Treasure
 -- Parse a treasure
