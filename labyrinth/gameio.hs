@@ -66,8 +66,9 @@ askPlayerCount :: AskMonad Int
 -- Ask how many players will be playing
 askPlayerCount = do
   liftIO $ putStrLn "How many players will be playing today? (0-4)"
-  input <- liftIO $ getLine
-  let numHumans = read input :: Int
+  -- input <- liftIO getLine
+  -- let numHumans = read input :: Int
+  numHumans <- fmap read $ liftIO getLine
   if numHumans `elem` [0..4]
   then return numHumans
   else throwE InvalidChoice
@@ -76,8 +77,8 @@ askFilePath :: IO FilePath
 -- Ask the file path to save the game
 askFilePath = do
   putStrLn "Please enter the name of the file to save your game"
-  input <- getLine
-  return $ input -<.> ".txt"
+  path <- fmap (-<.> ".txt") getLine
+  return $ path
 
 askDirection :: XTile -> AskMonad Direction
 -- Ask the direction to insert the XTile
@@ -87,8 +88,9 @@ askDirection (XTile kind t) = do
                                 ++ show (Tile kind E (Tr 0)) ++ "(2), "
                                 ++ show (Tile kind S (Tr 0)) ++ "(3), "
                                 ++ show (Tile kind W (Tr 0)) ++ "(4)"
-  input <- liftIO getLine
-  let xtiledir = read input :: Int
+  -- input <- liftIO getLine
+  -- let xtiledir = read input :: Int
+  xtiledir <- fmap read $ liftIO getLine
   if xtiledir `elem` [1..4]
   then return $ toEnum $ xtiledir - 1
   else throwE InvalidChoice
@@ -99,8 +101,9 @@ askEntry = do
     liftIO $ putStrLn "Where do you want to insert the XTile?"
     liftIO $ putStrLn "You can only insert the XTile in even rows and columns on the edge of the board."
     liftIO $ putStrLn "Give a row and column number in the format (row,column)."
-    input <- liftIO $ getLine
-    let (row,col) = read input :: (Int,Int)
+    -- input <- liftIO getLine
+    -- let (row,col) = read input :: (Int,Int)
+    (row,col) <- fmap read $ liftIO getLine
     if (row,col) `elem` movable
     then return $ Ps (row,col)
     else throwE InvalidInput
@@ -112,8 +115,9 @@ askEntry = do
 askPosition :: [Position] -> AskMonad Position
 -- Ask the player where to move to
 askPosition visited = do
-  input <- liftIO $ getLine
-  let pair = read input :: (Int,Int)
+  -- input <- liftIO getLine
+  -- let pair = read input :: (Int,Int)
+  pair <- fmap read $ liftIO getLine
   if Ps pair `elem` visited
   then return $ Ps pair
   else throwE InvalidChoice

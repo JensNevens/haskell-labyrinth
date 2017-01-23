@@ -39,21 +39,21 @@ exit (Ps (row,7)) = Ps (row,1)
 selectMove :: [Player] -> Board -> AskMonad (Direction, Position)
 -- For a human player: ask where to insert the XTile
 selectMove ((Player color Human p s c):others) board = do
-  direction <- liftIO $ retryForever $ askDirection (xtile board)
-  entry <- liftIO $ retryForever $ askEntry
+  direction <- liftIO . retryForever . askDirection $ xtile board
+  entry <- liftIO . retryForever $ askEntry
   if moveAllowed entry ((Player color Human p s c):others)
   then return (direction, entry)
   else throwE InvalidMove
 
 -- AI has no more cards to collect, so it needs to go to the finish
 selectMove ((Player color AI p s []):others) board =
-    return $ fst $ minimumBy (comparing $ (length . snd)) validMoves
+    return . fst . minimumBy (comparing (length . snd)) $ validMoves
   where
     validMoves = goFinish ((Player color AI p s []):others) board
 
 -- AI has yet to collect cards, so it gathers as much as possible
 selectMove ((Player color AI p s c):others) board =
-    return $ fst $ maximumBy (comparing $ (length . snd)) validMoves
+    return . fst . maximumBy (comparing (length . snd)) $ validMoves
   where
     validMoves = maxCards ((Player color AI p s c):others) board
 
@@ -174,8 +174,9 @@ neighbours :: Position -> Map.Map Position Tile -> [Position]
 -- Determine the neighbours of a position that you are able
 -- to visit. This depends on the kind and direction of both tiles
 neighbours pos bmap =
-    filter (canVisit bmap pos) $ filter inBounds $ allNeighbours pos
+    filter ((canVisit bmap pos) `and` inBounds) $ allNeighbours pos
   where
+    (p `and` q) x = p x && q x
     inBounds (Ps (row,col)) = row >= 1 && row <= 7 && col >= 1 && col <= 7
     allNeighbours (Ps (row,col)) = [Ps (row-1,col), Ps (row+1,col),
                                     Ps (row,col-1), Ps (row,col+1)]
@@ -235,7 +236,7 @@ movePlayer :: Player -> [Position] -> IO Player
 movePlayer (Player color Human _ start cards) visited = do
  putStrLn "Where do you want to move? You can reach the following tiles:"
  putStrLn $ show visited
- newPos <- retryForever $ askPosition visited
+ newPos <- retryForever . askPosition $ visited
  return $ Player color Human newPos start cards
 
 -- AI has collected all cards -> move to start position

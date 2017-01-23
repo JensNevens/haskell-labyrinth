@@ -27,7 +27,7 @@ main = do
 
 newGame :: IO ()
 newGame = do
-  numHumans <- retryForever $ askPlayerCount
+  numHumans <- retryForever askPlayerCount
   players <- mkPlayers numHumans
   board <- mkBoard
   loop players board
