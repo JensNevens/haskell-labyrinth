@@ -174,9 +174,8 @@ neighbours :: Position -> Map.Map Position Tile -> [Position]
 -- Determine the neighbours of a position that you are able
 -- to visit. This depends on the kind and direction of both tiles
 neighbours pos bmap =
-    filter ((canVisit bmap pos) `and` inBounds) $ allNeighbours pos
+    filter (canVisit bmap pos) . filter inBounds . allNeighbours $ pos
   where
-    (p `and` q) x = p x && q x
     inBounds (Ps (row,col)) = row >= 1 && row <= 7 && col >= 1 && col <= 7
     allNeighbours (Ps (row,col)) = [Ps (row-1,col), Ps (row+1,col),
                                     Ps (row,col-1), Ps (row,col+1)]

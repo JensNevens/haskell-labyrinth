@@ -62,7 +62,12 @@ play players board = do
   if isWinner firstPlayer'
   then announceWinner firstPlayer'
   else let nextPlayers = tail players' ++ [firstPlayer']
-       in callCommand "clear" >> loop nextPlayers board'
+       in callCommand "clear" >>
+          case control firstPlayer' of
+            Human -> loop nextPlayers board'
+            AI -> play nextPlayers board'
+  -- else let nextPlayers = tail players' ++ [firstPlayer']
+  --      in callCommand "clear" >> loop nextPlayers board'
 
 load :: FilePath -> IO ()
 load filename = do
